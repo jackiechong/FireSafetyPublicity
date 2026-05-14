@@ -1,0 +1,92 @@
+.page {
+  padding-bottom: 48rpx;
+}
+.hint-card {
+  margin: 24rpx;
+  padding: 28rpx;
+  background: linear-gradient(135deg, #e8eaf6 0%, #fff 100%);
+  border-radius: 16rpx;
+  border: 1rpx solid #c5cae9;
+}
+.hint-title {
+  font-weight: 600;
+  color: #1a237e;
+  margin-bottom: 12rpx;
+  font-size: 30rpx;
+}
+.hint-text {
+  color: #555;
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+.label {
+  margin-top: 28rpx;
+  margin-bottom: 12rpx;
+  color: #666;
+  font-size: 28rpx;
+}
+.req {
+  color: #c62828;
+}
+.picker-val {
+  border: 1rpx solid #ddd;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  background: #fafafa;
+}
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+.flex1 {
+  flex: 1;
+}
+.input {
+  border: 1rpx solid #ddd;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  background: #fafafa;
+}
+.btn-sm {
+  background: #3949ab !important;
+  color: #fff !important;
+}
+.org-list {
+  max-height: 360rpx;
+  margin-top: 12rpx;
+  border: 1rpx solid #eee;
+  border-radius: 12rpx;
+  background: #fff;
+}
+.org-item {
+  padding: 20rpx 24rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.org-item.on {
+  background: #e8eaf6;
+}
+.org-item:last-child {
+  border-bottom: none;
+}
+.org-name {
+  font-size: 28rpx;
+  color: #333;
+  flex: 1;
+  padding-right: 16rpx;
+}
+.org-type {
+  font-size: 24rpx;
+  color: #888;
+}
+.selected-tip {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #3949ab;
+}
+.btn-primary {
+  margin-top: 48rpx;
+}

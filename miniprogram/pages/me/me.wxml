@@ -1,0 +1,22 @@
+<view class="page">
+  <view class="card profile">
+    <view class="row"><text class="k">微信</text><text class="ok">已绑定</text></view>
+    <view class="row"><text class="k">姓名</text><text>{{person.name || '-'}}</text></view>
+    <view class="row"><text class="k">手机</text><text>{{person.phone || '-'}}</text></view>
+    <view class="row"><text class="k">区县</text><text>{{person.district_name || '-'}}</text></view>
+    <view class="row"><text class="k">单位</text><text>{{person.organization_name || '-'}}</text></view>
+    <view class="row"><text class="k">职务</text><text>{{person.job_title || '-'}}</text></view>
+  </view>
+  <view class="section-title">培训记录</view>
+  <block wx:if="{{list.length === 0}}">
+    <view class="empty">暂无记录（需管理端将您加入培训名单）</view>
+  </block>
+  <block wx:for="{{list}}" wx:key="session_id">
+    <view class="card item">
+      <view class="t">{{item.title}}</view>
+      <view class="meta">{{item.organization_name}} · {{item.district_name}}</view>
+      <view class="meta">{{item.start_at}} · {{item.duration_minutes}} 分钟</view>
+    </view>
+  </block>
+  <button class="logout" bindtap="logout">退出登录</button>
+</view>

@@ -1,0 +1,25 @@
+.wrap {
+  min-height: 100vh;
+}
+.hero {
+  background: linear-gradient(160deg, #1a237e 0%, #3949ab 100%);
+  padding: 80rpx 40rpx 100rpx;
+  color: #fff;
+}
+.title {
+  font-size: 36rpx;
+  font-weight: 600;
+  text-align: center;
+}
+.sub {
+  text-align: center;
+  margin-top: 16rpx;
+  opacity: 0.9;
+  font-size: 28rpx;
+}
+.hint {
+  margin-top: 24rpx;
+  color: #888;
+  font-size: 24rpx;
+  text-align: center;
+}

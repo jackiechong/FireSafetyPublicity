@@ -1,0 +1,196 @@
+const { request } = require("../../utils/request");
+
+const OTHER_ORG_FLAG = "__OTHER__";
+
+Page({
+  data: {
+    districtList: [],
+    districtNames: [],
+    districtIndex: 0,
+    districtId: null,
+
+    orgList: [], // [{id, name, org_type}]
+    orgPickerLabels: [], // 显示用：每行单位名 + 类型，最后一项「其他单位（手动添加）」
+    orgIndex: -1,
+    selectedOrg: null, // {id, name, org_type} 或 null
+    showCustomOrg: false,
+    customOrgName: "",
+    customOrgType: "enterprise", // department | enterprise
+    customOrgTypeIndex: 0,
+    customOrgTypeOptions: ["企业", "行业部门"],
+
+    name: "",
+    phone: "",
+    jobTitle: "",
+
+    loading: false,
+    redirectSessionId: 0,
+  },
+
+  async onLoad(options = {}) {
+    const app = getApp();
+    if (!app.globalData.token) {
+      wx.redirectTo({ url: "/pages/index/index" });
+      return;
+    }
+    this.setData({ redirectSessionId: Number(options.session_id || 0) });
+    await this.loadDistricts();
+  },
+
+  async loadDistricts() {
+    try {
+      const list = await request({ url: "/api/mp/districts" });
+      const names = (list || []).map((d) => d.name);
+      this.setData({
+        districtList: list || [],
+        districtNames: names,
+        districtIndex: 0,
+        districtId: list && list.length ? list[0].id : null,
+      });
+      if (this.data.districtId) await this.loadOrgs();
+    } catch (e) {
+      wx.showToast({ title: e.message || "加载区县失败", icon: "none" });
+    }
+  },
+
+  async loadOrgs() {
+    const { districtId } = this.data;
+    if (!districtId) return;
+    try {
+      const list = await request({
+        url: `/api/mp/organizations?district_id=${districtId}&q=`,
+      });
+      const labels = (list || []).map(
+        (o) => `${o.name}（${o.org_type === "department" ? "行业部门" : "企业"}）`
+      );
+      labels.push("其他单位（手动添加）");
+      this.setData({
+        orgList: list || [],
+        orgPickerLabels: labels,
+        orgIndex: -1,
+        selectedOrg: null,
+        showCustomOrg: false,
+        customOrgName: "",
+      });
+    } catch (e) {
+      wx.showToast({ title: e.message || "加载单位失败", icon: "none" });
+    }
+  },
+
+  onDistrictChange(e) {
+    const idx = Number(e.detail.value);
+    const d = this.data.districtList[idx];
+    this.setData({
+      districtIndex: idx,
+      districtId: d ? d.id : null,
+    });
+    this.loadOrgs();
+  },
+
+  onOrgPick(e) {
+    const idx = Number(e.detail.value);
+    const isOther = idx === this.data.orgList.length;
+    if (isOther) {
+      this.setData({
+        orgIndex: idx,
+        selectedOrg: { id: OTHER_ORG_FLAG, name: "其他单位（手动添加）", org_type: "enterprise" },
+        showCustomOrg: true,
+      });
+    } else {
+      const o = this.data.orgList[idx];
+      this.setData({
+        orgIndex: idx,
+        selectedOrg: o ? { id: o.id, name: o.name, org_type: o.org_type } : null,
+        showCustomOrg: false,
+        customOrgName: "",
+      });
+    }
+  },
+
+  onCustomOrgName(e) {
+    this.setData({ customOrgName: e.detail.value });
+  },
+
+  onCustomOrgTypeChange(e) {
+    const idx = Number(e.detail.value);
+    this.setData({
+      customOrgTypeIndex: idx,
+      customOrgType: idx === 1 ? "department" : "enterprise",
+    });
+  },
+
+  onName(e) {
+    this.setData({ name: e.detail.value });
+  },
+  onPhone(e) {
+    this.setData({ phone: e.detail.value });
+  },
+  onJobTitle(e) {
+    this.setData({ jobTitle: e.detail.value });
+  },
+
+  async submit() {
+    const {
+      name,
+      phone,
+      districtId,
+      selectedOrg,
+      jobTitle,
+      showCustomOrg,
+      customOrgName,
+      customOrgType,
+    } = this.data;
+    if (!districtId) {
+      wx.showToast({ title: "请选择区县", icon: "none" });
+      return;
+    }
+    if (!selectedOrg) {
+      wx.showToast({ title: "请选择所在单位", icon: "none" });
+      return;
+    }
+    if (!name.trim() || phone.length !== 11) {
+      wx.showToast({ title: "请填写姓名与11位手机号", icon: "none" });
+      return;
+    }
+    if (showCustomOrg && !customOrgName.trim()) {
+      wx.showToast({ title: "请输入新单位名称", icon: "none" });
+      return;
+    }
+    this.setData({ loading: true });
+    try {
+      let organization_id = selectedOrg.id;
+      if (showCustomOrg) {
+        const created = await request({
+          url: "/api/mp/organizations",
+          method: "POST",
+          data: {
+            district_id: districtId,
+            name: customOrgName.trim(),
+            org_type: customOrgType,
+          },
+        });
+        organization_id = created.id;
+      }
+      await request({
+        url: "/api/mp/profile",
+        method: "POST",
+        data: {
+          name: name.trim(),
+          phone,
+          district_id: districtId,
+          organization_id,
+          job_title: jobTitle.trim() || undefined,
+        },
+      });
+      wx.showToast({ title: "注册成功" });
+      const target = this.data.redirectSessionId
+        ? `/pages/checkin/checkin?session_id=${this.data.redirectSessionId}`
+        : "/pages/me/me";
+      setTimeout(() => wx.redirectTo({ url: target }), 400);
+    } catch (e) {
+      wx.showToast({ title: e.message || "保存失败", icon: "none" });
+    } finally {
+      this.setData({ loading: false });
+    }
+  },
+});

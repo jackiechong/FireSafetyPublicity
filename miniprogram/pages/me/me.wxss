@@ -1,0 +1,39 @@
+.page {
+  padding-bottom: 48rpx;
+}
+.profile .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12rpx 0;
+}
+.k {
+  color: #888;
+}
+.ok {
+  color: #2e7d32;
+  font-size: 26rpx;
+}
+.section-title {
+  margin: 24rpx 32rpx 8rpx;
+  font-weight: 600;
+  color: #1a237e;
+}
+.item .t {
+  font-weight: 600;
+  margin-bottom: 8rpx;
+}
+.meta {
+  color: #666;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+.empty {
+  text-align: center;
+  color: #999;
+  padding: 40rpx;
+}
+.logout {
+  margin: 40rpx 24rpx;
+  background: #fff;
+  color: #c62828;
+}

@@ -1,0 +1,50 @@
+.page {
+  padding: 32rpx 24rpx 48rpx;
+}
+.status-card {
+  padding: 40rpx 32rpx;
+}
+.status-title {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1a237e;
+  margin-bottom: 20rpx;
+}
+.status-title.ok {
+  color: #1b7f3a;
+}
+.status-title.bad {
+  color: #c62828;
+}
+.status-text {
+  color: #666;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+.session-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #222;
+  margin-bottom: 24rpx;
+  line-height: 1.4;
+}
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #eee;
+  color: #555;
+  font-size: 28rpx;
+}
+.info-row text:first-child {
+  color: #888;
+  flex: 0 0 96rpx;
+}
+.info-row text:last-child {
+  flex: 1;
+  text-align: right;
+}
+.btn-primary {
+  margin-top: 40rpx;
+}

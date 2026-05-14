@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+backend/venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Env & secrets（勿提交密钥）
+.env
+.env.*
+!.env.example
+
+# Node / 前端构建
+web-admin/node_modules/
+web-admin/dist/
+npm-debug.log*
+
+# 本地数据库
+backend/data/*.db
+backend/data/*.db-*
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# 微信小程序（开发者本机私有配置，按需保留；含敏感信息时请取消下面一行注释）
+# miniprogram/project.private.config.json

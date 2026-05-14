@@ -1,0 +1,16 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/checkin/checkin",
+    "pages/bind/bind",
+    "pages/me/me"
+  ],
+  "window": {
+    "navigationBarTitleText": "葫芦岛消防培训",
+    "navigationBarBackgroundColor": "#1a237e",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f5f7fa"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
