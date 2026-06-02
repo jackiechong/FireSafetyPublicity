@@ -46,6 +46,20 @@ def sqlite_migrate_legacy_person_columns() -> None:
             if "is_active" not in cols:
                 conn.execute(text("ALTER TABLE training_sessions ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
 
+        rows = conn.execute(text("PRAGMA table_info(admin_users)")).fetchall()
+        if rows:
+            cols = {r[1] for r in rows}
+            if "wx_openid" not in cols:
+                conn.execute(text("ALTER TABLE admin_users ADD COLUMN wx_openid VARCHAR(64)"))
+            if "wx_bound_at" not in cols:
+                conn.execute(text("ALTER TABLE admin_users ADD COLUMN wx_bound_at DATETIME"))
+
+        rows = conn.execute(text("PRAGMA table_info(admin_wx_bind_codes)")).fetchall()
+        if rows:
+            cols = {r[1] for r in rows}
+            if "failed_attempts" not in cols:
+                conn.execute(text("ALTER TABLE admin_wx_bind_codes ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0"))
+
 
 def get_db():
     db = SessionLocal()

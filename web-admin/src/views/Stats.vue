@@ -103,13 +103,51 @@
             {{ formatTrainingMinutes(row.total_minutes) }}
           </template>
         </el-table-column>
+        <el-table-column v-if="canRebindPersons" label="操作" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openPersonRebind(row)">重绑</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </template>
+
+    <el-dialog v-model="personRebindVisible" title="重新绑定人员身份" width="520px" destroy-on-close>
+      <el-form label-width="90px">
+        <el-form-item label="姓名">
+          <el-input v-model="personRebindForm.name" maxlength="64" />
+        </el-form-item>
+        <el-form-item label="手机号">
+          <el-input v-model="personRebindForm.phone" maxlength="11" />
+        </el-form-item>
+        <el-form-item label="区县">
+          <el-select v-model="personRebindForm.district_id" style="width: 100%" disabled>
+            <el-option v-for="d in districtOptions" :key="d.id" :label="d.name" :value="d.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="单位">
+          <el-select v-model="personRebindForm.organization_id" filterable style="width: 100%">
+            <el-option
+              v-for="o in orgsInDistrict"
+              :key="o.organization_id"
+              :label="o.organization_name"
+              :value="o.organization_id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="身份">
+          <el-input v-model="personRebindForm.job_title" maxlength="64" placeholder="如：消防安全管理人" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="personRebindVisible = false">取消</el-button>
+        <el-button type="primary" :loading="personRebindSaving" @click="submitPersonRebind">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import * as echarts from "echarts";
 import { ElMessage } from "element-plus";
 import http from "../api/http";
@@ -126,8 +164,21 @@ const orgsInDistrict = ref([]);
 const orgFilter = ref();
 const orgPersonRows = ref([]);
 const orgPersonLoading = ref(false);
+const currentAdmin = ref(null);
+const personRebindVisible = ref(false);
+const personRebindSaving = ref(false);
+const personRebindId = ref(null);
+const personRebindForm = reactive({
+  name: "",
+  phone: "",
+  district_id: undefined,
+  organization_id: undefined,
+  job_title: "",
+});
 /** 仅在 stats/search-suggest 404（旧版后端）时提示一次 */
 const searchLegacyHintShown = ref(false);
+
+const canRebindPersons = computed(() => currentAdmin.value?.role === "detachment");
 
 const displayTotalMinutes = computed(() => {
   if (districtFilter.value) {
@@ -279,6 +330,11 @@ async function loadDistrictsMeta() {
   districtOptions.value = data;
 }
 
+async function loadCurrentAdmin() {
+  const { data } = await http.get("/api/admin/me");
+  currentAdmin.value = data;
+}
+
 async function loadDistrictStats() {
   const { data } = await http.get("/api/admin/stats/by-district");
   districtData.value = data;
@@ -425,7 +481,51 @@ async function onOrgChange() {
   }
 }
 
+function openPersonRebind(row) {
+  personRebindId.value = row.person_id;
+  personRebindForm.name = row.name || "";
+  personRebindForm.phone = row.phone || "";
+  personRebindForm.district_id = Number(districtFilter.value);
+  personRebindForm.organization_id = Number(orgFilter.value);
+  personRebindForm.job_title = "";
+  personRebindVisible.value = true;
+}
+
+async function submitPersonRebind() {
+  if (!personRebindId.value) return;
+  if (!personRebindForm.name.trim()) {
+    ElMessage.warning("请填写姓名");
+    return;
+  }
+  if (!/^1\d{10}$/.test(String(personRebindForm.phone || "").trim())) {
+    ElMessage.warning("输入号码有误，请重新输入");
+    return;
+  }
+  if (!personRebindForm.district_id || !personRebindForm.organization_id) {
+    ElMessage.warning("请选择区县和单位");
+    return;
+  }
+  personRebindSaving.value = true;
+  try {
+    await http.patch(`/api/admin/persons/${personRebindId.value}/rebind`, {
+      name: personRebindForm.name.trim(),
+      phone: String(personRebindForm.phone || "").trim(),
+      district_id: Number(personRebindForm.district_id),
+      organization_id: Number(personRebindForm.organization_id),
+      job_title: personRebindForm.job_title.trim() || undefined,
+    });
+    ElMessage.success("人员身份已重新绑定");
+    personRebindVisible.value = false;
+    await onOrgChange();
+  } catch (e) {
+    console.error(e);
+  } finally {
+    personRebindSaving.value = false;
+  }
+}
+
 onMounted(async () => {
+  await loadCurrentAdmin();
   await loadDistrictsMeta();
   await loadDistrictStats();
   await renderChart();

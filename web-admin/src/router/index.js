@@ -12,7 +12,13 @@ const routes = [
     children: [
       {
         path: "",
-        redirect: "/h5/me",
+        redirect: "/h5/entry",
+      },
+      {
+        path: "entry",
+        name: "h5-entry",
+        component: () => import("../views/h5/H5Entry.vue"),
+        meta: { public: true, h5: true },
       },
       {
         path: "checkin",

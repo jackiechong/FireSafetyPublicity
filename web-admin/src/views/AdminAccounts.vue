@@ -12,18 +12,31 @@
           {{ row.role === "detachment" ? "支队（全市）" : "大队" }}
         </template>
       </el-table-column>
-      <el-table-column label="所属大队" min-width="140">
+      <el-table-column label="所属大队" min-width="120">
         <template #default="{ row }">{{ row.brigade_name || "—" }}</template>
       </el-table-column>
-      <el-table-column label="状态" width="100">
+      <el-table-column label="小程序绑定" min-width="160">
+        <template #default="{ row }">
+          <el-tag v-if="row.wx_bound" type="success">已绑定</el-tag>
+          <el-tag v-else type="info">未绑定</el-tag>
+          <div v-if="row.wx_bound && row.wx_bound_at" class="bind-time">
+            {{ formatTime(row.wx_bound_at) }}
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? "启用" : "停用" }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="320" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">权限</el-button>
           <el-button link type="warning" @click="openPwd(row)">改密</el-button>
+          <el-button link type="success" :disabled="!row.is_active" @click="genBindCode(row)">
+            生成绑定码
+          </el-button>
+          <el-button link type="danger" :disabled="!row.wx_bound" @click="unbindWx(row)">解除绑定</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -91,13 +104,24 @@
         <el-button type="primary" :loading="saving" @click="submitPwd">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="bindCodeVisible" title="小程序绑定码" width="420px" destroy-on-close>
+      <p class="tip">请让管理员 <b>{{ bindCodeUser?.username }}</b> 在小程序「身份绑定」页输入下方 8 位数字。</p>
+      <div v-if="bindCodeData" class="bind-code-box">
+        <div class="bind-code">{{ bindCodeData.code }}</div>
+        <p class="bind-expire">有效期 {{ bindCodeData.expires_in_minutes }} 分钟，至 {{ formatTime(bindCodeData.expires_at) }}</p>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="bindCodeVisible = false">知道了</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import http from "../api/http";
 
 const router = useRouter();
@@ -125,6 +149,15 @@ const editForm = reactive({
 const pwdVisible = ref(false);
 const pwdUserId = ref(null);
 const pwdForm = reactive({ new_password: "" });
+
+const bindCodeVisible = ref(false);
+const bindCodeUser = ref(null);
+const bindCodeData = ref(null);
+
+function formatTime(iso) {
+  if (!iso) return "";
+  return String(iso).replace("T", " ").slice(0, 16);
+}
 
 async function ensureDetachment() {
   const { data: me } = await http.get("/api/admin/me");
@@ -240,6 +273,30 @@ async function submitPwd() {
   }
 }
 
+async function genBindCode(row) {
+  try {
+    const { data } = await http.post(`/api/admin/accounts/${row.id}/wx-bind-code`);
+    bindCodeUser.value = row;
+    bindCodeData.value = data;
+    bindCodeVisible.value = true;
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function unbindWx(row) {
+  try {
+    await ElMessageBox.confirm(`确定解除「${row.username}」的小程序微信绑定？`, "解除绑定", {
+      type: "warning",
+    });
+    await http.delete(`/api/admin/accounts/${row.id}/wx-bind`);
+    ElMessage.success("已解除绑定");
+    await load();
+  } catch (e) {
+    if (e !== "cancel") console.error(e);
+  }
+}
+
 onMounted(async () => {
   if (!(await ensureDetachment())) return;
   const { data } = await http.get("/api/admin/brigades");
@@ -263,5 +320,25 @@ h2 {
   color: #888;
   font-size: 13px;
   margin: 0 0 16px;
+}
+.bind-time {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+.bind-code-box {
+  text-align: center;
+  padding: 12px 0;
+}
+.bind-code {
+  font-size: 36px;
+  letter-spacing: 8px;
+  font-weight: 700;
+  color: #1a237e;
+}
+.bind-expire {
+  margin-top: 12px;
+  color: #666;
+  font-size: 13px;
 }
 </style>

@@ -5,7 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AdminUser, AdminRole, Person
+from app.models import AdminRole, AdminUser, Person
 from app.security import decode_token
 
 security = HTTPBearer(auto_error=False)
@@ -39,6 +39,30 @@ def require_detachment_admin(
 ) -> AdminUser:
     if admin.role != AdminRole.detachment:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅支队管理员可操作")
+    return admin
+
+
+def resolve_mp_admin(db: Session, person: Person) -> AdminUser | None:
+    """小程序 openid 是否已绑定启用中的后台管理员账号。"""
+    if not person.openid or person.openid.startswith("wxoa:"):
+        return None
+    return (
+        db.query(AdminUser)
+        .filter(AdminUser.wx_openid == person.openid, AdminUser.is_active.is_(True))
+        .first()
+    )
+
+
+def get_current_mp_admin(
+    person: Annotated[Person, Depends(get_current_person_token)],
+    db: Session = Depends(get_db),
+) -> AdminUser:
+    admin = resolve_mp_admin(db, person)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="未绑定小程序管理权限，请在网站获取 6 位绑定码后完成绑定",
+        )
     return admin
 
 

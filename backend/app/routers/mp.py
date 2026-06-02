@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_person_token
+from app.deps import get_current_person_token, resolve_mp_admin
 from app.models import Brigade, District, Organization, Person, TrainingAttendance, TrainingSession
 from app.schemas import (
     DistrictOut,
@@ -28,6 +28,29 @@ from app.wechat import code_to_session
 router = APIRouter(prefix="/api/mp", tags=["miniprogram"])
 
 
+def _admin_fields(person: Person, db: Session) -> dict:
+    admin = resolve_mp_admin(db, person)
+    if not admin:
+        return {
+            "is_admin": False,
+            "admin_role": None,
+            "admin_brigade_id": None,
+            "admin_username": None,
+            "admin_brigade_name": None,
+        }
+    bname = None
+    if admin.brigade_id:
+        b = db.get(Brigade, admin.brigade_id)
+        bname = b.name if b else None
+    return {
+        "is_admin": True,
+        "admin_role": admin.role.value,
+        "admin_brigade_id": admin.brigade_id,
+        "admin_username": admin.username,
+        "admin_brigade_name": bname,
+    }
+
+
 def _build_person_out(person: Person, db: Session) -> MpPersonOut:
     dname = oname = None
     if person.district_id:
@@ -45,6 +68,7 @@ def _build_person_out(person: Person, db: Session) -> MpPersonOut:
         organization_name=oname,
         job_title=person.job_title,
         wechat_bound=True,
+        **_admin_fields(person, db),
     )
 
 
@@ -79,7 +103,7 @@ async def mp_login(body: MpLoginIn, db: Session = Depends(get_db)):
 
     need_profile = not _profile_complete(person)
     token = create_access_token(person.id, {"typ": "mp"})
-    return MpLoginOut(token=token, need_profile=need_profile)
+    return MpLoginOut(token=token, need_profile=need_profile, **_admin_fields(person, db))
 
 
 @router.get("/me", response_model=MpPersonOut)

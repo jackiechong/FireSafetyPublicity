@@ -1,7 +1,8 @@
 App({
   globalData: {
     token: "",
-    apiBase: "", // 在 utils/config.js 填写后端地址
+    isAdmin: false,
+    apiBase: "https://hld-xfpx.xyz", // 在 utils/config.js 填写后端地址
   },
   onLaunch() {
     const cfg = require("./utils/config");

@@ -35,8 +35,27 @@ class AdminUser(Base):
     role: Mapped[AdminRole] = mapped_column(Enum(AdminRole), default=AdminRole.brigade)
     brigade_id: Mapped[int | None] = mapped_column(ForeignKey("brigades.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    wx_openid: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    wx_bound_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     brigade = relationship("Brigade", back_populates="admins")
+    wx_bind_codes = relationship("AdminWxBindCode", back_populates="admin_user")
+
+
+class AdminWxBindCode(Base):
+    """支队在网站生成的 8 位绑定码，供管理员在小程序输入以绑定微信 openid。"""
+
+    __tablename__ = "admin_wx_bind_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(8), unique=True, index=True)
+    admin_user_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    admin_user = relationship("AdminUser", back_populates="wx_bind_codes")
 
 
 class Brigade(Base):

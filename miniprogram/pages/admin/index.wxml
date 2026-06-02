@@ -1,0 +1,60 @@
+<view class="page">
+  <view class="card" wx:if="{{adminInfo}}">
+    <view class="admin-line">管理员：{{adminInfo.admin_username}}</view>
+    <view class="admin-sub">{{adminInfo.admin_role === 'detachment' ? '支队（全市）' : '大队'}} · {{adminInfo.admin_brigade_name || '—'}}</view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">新建培训</view>
+    <view class="field">
+      <text class="label">培训标题</text>
+      <input class="input" placeholder="如：电气火灾防范培训" value="{{title}}" bindinput="onTitle" />
+    </view>
+    <view class="field">
+      <text class="label">所在区县</text>
+      <picker mode="selector" range="{{districtNames}}" value="{{districtIndex}}" bindchange="onDistrictChange">
+        <view class="picker">{{districtNames[districtIndex] || '请选择'}}</view>
+      </picker>
+    </view>
+    <view class="field">
+      <text class="label">参训单位</text>
+      <picker mode="selector" range="{{orgLabels}}" value="{{orgIndex}}" bindchange="onOrgChange" disabled="{{!orgLabels.length}}">
+        <view class="picker">{{orgLabels[orgIndex] || '请先选区县'}}</view>
+      </picker>
+    </view>
+    <view class="field row">
+      <view class="half">
+        <text class="label">时长（分钟）</text>
+        <input class="input" type="number" value="{{durationMinutes}}" bindinput="onDuration" />
+      </view>
+      <view class="half">
+        <text class="label">地点（选填）</text>
+        <input class="input" placeholder="会议室" value="{{location}}" bindinput="onLocation" />
+      </view>
+    </view>
+    <button class="btn-primary" loading="{{creating}}" bindtap="onCreate">创建培训</button>
+  </view>
+
+  <view class="section-title">我管理的培训</view>
+  <block wx:if="{{trainings.length === 0}}">
+    <view class="empty">暂无培训</view>
+  </block>
+  <block wx:for="{{trainings}}" wx:key="id">
+    <view class="card item" data-id="{{item.id}}" bindtap="onShowQr">
+      <view class="t">{{item.title}}</view>
+      <view class="meta">{{item.start_at}} · {{item.duration_minutes}} 分钟</view>
+    </view>
+  </block>
+
+  <view wx:if="{{qrInfo}}" class="mask" bindtap="closeQr">
+    <view class="qr-panel" catchtap="noop">
+      <view class="qr-title">{{qrInfo.title}}</view>
+      <view class="qr-row">单位：{{qrInfo.organization_name}}</view>
+      <view class="qr-row">大队：{{qrInfo.brigade_name}}</view>
+      <view class="qr-row">已签到：{{qrInfo.attendance_count}} 人</view>
+      <view class="qr-url">{{qrUrl}}</view>
+      <button size="mini" bindtap="copyQr">复制签到链接</button>
+      <button size="mini" class="close" bindtap="closeQr">关闭</button>
+    </view>
+  </view>
+</view>

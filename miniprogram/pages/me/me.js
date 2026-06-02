@@ -23,6 +23,8 @@ Page({
         ...t,
         start_at: (t.start_at || "").replace("T", " ").slice(0, 16),
       }));
+      const app = getApp();
+      app.globalData.isAdmin = !!me.is_admin;
       this.setData({ person: me, list });
       const ok =
         me.name &&
@@ -35,6 +37,19 @@ Page({
     } catch (e) {
       wx.showToast({ title: e.message || "加载失败", icon: "none" });
     }
+  },
+  goAdminEntry() {
+    if (this.data.person && this.data.person.is_admin) {
+      this.goAdminTraining();
+      return;
+    }
+    this.goAdminBind();
+  },
+  goAdminBind() {
+    wx.navigateTo({ url: "/pages/admin/bind" });
+  },
+  goAdminTraining() {
+    wx.navigateTo({ url: "/pages/admin/index" });
   },
   logout() {
     const app = getApp();

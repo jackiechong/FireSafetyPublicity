@@ -148,8 +148,13 @@ Page({
       wx.showToast({ title: "请选择所在单位", icon: "none" });
       return;
     }
-    if (!name.trim() || phone.length !== 11) {
-      wx.showToast({ title: "请填写姓名与11位手机号", icon: "none" });
+    const cleanPhone = String(phone || "").trim();
+    if (!name.trim()) {
+      wx.showToast({ title: "请填写姓名", icon: "none" });
+      return;
+    }
+    if (!/^1\d{10}$/.test(cleanPhone)) {
+      wx.showToast({ title: "输入号码有误，请重新输入", icon: "none" });
       return;
     }
     if (showCustomOrg && !customOrgName.trim()) {
@@ -176,7 +181,7 @@ Page({
         method: "POST",
         data: {
           name: name.trim(),
-          phone,
+          phone: cleanPhone,
           district_id: districtId,
           organization_id,
           job_title: jobTitle.trim() || undefined,

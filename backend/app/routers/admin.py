@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timedelta
 from typing import Annotated, List, Optional
 
@@ -10,6 +11,7 @@ from app.deps import brigade_filter_brigade_id, get_current_admin, require_detac
 from app.models import (
     AdminRole,
     AdminUser,
+    AdminWxBindCode,
     Brigade,
     District,
     Organization,
@@ -24,7 +26,10 @@ from app.schemas import (
     AdminAccountUpdate,
     AdminLogin,
     AdminPasswordReset,
+    AdminPersonOut,
+    AdminPersonRebindIn,
     AdminUserOut,
+    AdminWxBindCodeOut,
     AttendanceAdd,
     BrigadeOut,
     DistrictOut,
@@ -658,6 +663,8 @@ def list_admin_accounts(
             brigade_id=u.brigade_id,
             brigade_name=bname,
             is_active=u.is_active,
+            wx_bound=bool(u.wx_openid),
+            wx_bound_at=u.wx_bound_at,
         )
         for u, bname in rows
     ]
@@ -697,7 +704,98 @@ def create_admin_account(
         brigade_id=u.brigade_id,
         brigade_name=bname,
         is_active=u.is_active,
+        wx_bound=bool(u.wx_openid),
+        wx_bound_at=u.wx_bound_at,
     )
+
+
+@router.post("/accounts/{user_id}/wx-bind-code", response_model=AdminWxBindCodeOut)
+def create_admin_wx_bind_code(
+    user_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    """为指定管理员生成 8 位小程序绑定码（15 分钟内有效，一次性）。"""
+    u = db.get(AdminUser, user_id)
+    if not u:
+        raise HTTPException(404, "用户不存在")
+    if not u.is_active:
+        raise HTTPException(400, "账号已停用，无法绑定")
+
+    ttl = 15
+    expires_at = datetime.utcnow() + timedelta(minutes=ttl)
+    db.query(AdminWxBindCode).filter(
+        AdminWxBindCode.admin_user_id == u.id,
+        AdminWxBindCode.used_at.is_(None),
+    ).update({AdminWxBindCode.used_at: datetime.utcnow()}, synchronize_session=False)
+    for _ in range(20):
+        code = f"{secrets.randbelow(100_000_000):08d}"
+        if db.query(AdminWxBindCode).filter(AdminWxBindCode.code == code).first():
+            continue
+        row = AdminWxBindCode(code=code, admin_user_id=u.id, expires_at=expires_at)
+        db.add(row)
+        db.commit()
+        return AdminWxBindCodeOut(code=code, expires_at=expires_at, expires_in_minutes=ttl)
+    raise HTTPException(500, "绑定码生成失败，请重试")
+
+
+def _person_out(person: Person, db: Session) -> AdminPersonOut:
+    district = db.get(District, person.district_id) if person.district_id else None
+    org = db.get(Organization, person.organization_id) if person.organization_id else None
+    return AdminPersonOut(
+        person_id=person.id,
+        name=person.name or "",
+        phone=person.phone or "",
+        district_id=person.district_id,
+        district_name=district.name if district else None,
+        organization_id=person.organization_id,
+        organization_name=org.name if org else None,
+        job_title=person.job_title,
+    )
+
+
+@router.patch("/persons/{person_id}/rebind", response_model=AdminPersonOut)
+def rebind_person_profile(
+    person_id: int,
+    body: AdminPersonRebindIn,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    """支队管理员重新绑定人员姓名、手机号、单位与身份/岗位。"""
+    person = db.get(Person, person_id)
+    if not person:
+        raise HTTPException(404, "人员不存在")
+    if not db.get(District, body.district_id):
+        raise HTTPException(400, "区县不存在")
+    org = db.get(Organization, body.organization_id)
+    if not org or org.district_id != body.district_id:
+        raise HTTPException(400, "所选单位与区县不一致，或单位不存在")
+    dup = db.query(Person).filter(Person.phone == body.phone, Person.id != person.id).first()
+    if dup:
+        raise HTTPException(400, "该手机号已被其他人员绑定")
+
+    person.name = body.name.strip()
+    person.phone = body.phone.strip()
+    person.district_id = body.district_id
+    person.organization_id = body.organization_id
+    person.job_title = body.job_title.strip() if body.job_title else None
+    db.commit()
+    db.refresh(person)
+    return _person_out(person, db)
+
+
+@router.delete("/accounts/{user_id}/wx-bind", status_code=204)
+def clear_admin_wx_bind(
+    user_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    u = db.get(AdminUser, user_id)
+    if not u:
+        raise HTTPException(404, "用户不存在")
+    u.wx_openid = None
+    u.wx_bound_at = None
+    db.commit()
 
 
 @router.patch("/accounts/{user_id}", response_model=AdminAccountOut)
@@ -741,6 +839,8 @@ def update_admin_account(
         brigade_id=u.brigade_id,
         brigade_name=bname,
         is_active=u.is_active,
+        wx_bound=bool(u.wx_openid),
+        wx_bound_at=u.wx_bound_at,
     )
 
 

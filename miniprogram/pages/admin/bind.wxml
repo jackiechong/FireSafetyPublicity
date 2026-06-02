@@ -1,0 +1,23 @@
+<view class="page">
+  <view class="card">
+    <view class="title">绑定网站管理员账号</view>
+    <view class="hint">请支队管理员在网站「管理员账号」页为您生成 8 位绑定码，在此输入完成绑定。</view>
+    <input
+      class="code-input"
+      type="number"
+      maxlength="8"
+      placeholder="请输入 8 位数字"
+      value="{{code}}"
+      disabled="{{locked}}"
+      bindinput="onCodeInput"
+    />
+    <view wx:if="{{failCount > 0 && !locked}}" class="fail-tip">已输错 {{failCount}} 次，连续 5 次后需重新生成绑定码。</view>
+    <view wx:if="{{locked}}" class="fail-tip locked">输入错误次数过多，请重新生成绑定码。</view>
+    <button class="btn-primary" loading="{{loading}}" disabled="{{locked}}" bindtap="onSubmit">确认绑定</button>
+  </view>
+  <view wx:if="{{bound}}" class="card ok">
+    <view>已绑定：{{adminUsername}}</view>
+    <view class="sub">{{adminRoleText}} · {{adminBrigadeName || '全市'}}</view>
+    <button class="btn-link" bindtap="goTraining">去创建培训</button>
+  </view>
+</view>

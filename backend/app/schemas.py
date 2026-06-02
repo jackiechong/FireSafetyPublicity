@@ -33,6 +33,14 @@ class AdminAccountOut(BaseModel):
     brigade_id: Optional[int] = None
     brigade_name: Optional[str] = None
     is_active: bool
+    wx_bound: bool = False
+    wx_bound_at: Optional[datetime] = None
+
+
+class AdminWxBindCodeOut(BaseModel):
+    code: str
+    expires_at: datetime
+    expires_in_minutes: int = 15
 
 
 class AdminAccountCreate(BaseModel):
@@ -170,6 +178,29 @@ class MpLoginIn(BaseModel):
 class MpLoginOut(BaseModel):
     token: str
     need_profile: bool
+    is_admin: bool = False
+    admin_role: Optional[str] = None
+    admin_brigade_id: Optional[int] = None
+    admin_username: Optional[str] = None
+    admin_brigade_name: Optional[str] = None
+
+
+class MpWxBindIn(BaseModel):
+    code: str = Field(..., min_length=8, max_length=8, pattern=r"^\d{8}$")
+
+
+class MpWxBindOut(BaseModel):
+    ok: bool = True
+    admin_username: str
+    admin_role: str
+    admin_brigade_name: Optional[str] = None
+
+
+class MpAdminMeOut(BaseModel):
+    admin_username: str
+    admin_role: str
+    admin_brigade_id: Optional[int] = None
+    admin_brigade_name: Optional[str] = None
 
 
 class MpProfileIn(BaseModel):
@@ -196,6 +227,11 @@ class MpPersonOut(BaseModel):
     organization_name: Optional[str] = None
     job_title: Optional[str] = None
     wechat_bound: bool = True
+    is_admin: bool = False
+    admin_role: Optional[str] = None
+    admin_brigade_id: Optional[int] = None
+    admin_username: Optional[str] = None
+    admin_brigade_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -254,6 +290,25 @@ class StatsPersonItem(BaseModel):
     phone: str
     session_count: int
     total_minutes: int
+
+
+class AdminPersonRebindIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+    phone: str = Field(..., min_length=11, max_length=11, pattern=r"^1\d{10}$")
+    district_id: int = Field(..., ge=1)
+    organization_id: int = Field(..., ge=1)
+    job_title: Optional[str] = Field(default=None, max_length=64)
+
+
+class AdminPersonOut(BaseModel):
+    person_id: int
+    name: str
+    phone: str
+    district_id: Optional[int] = None
+    district_name: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    job_title: Optional[str] = None
 
 
 class StatsOrgInDistrictItem(BaseModel):

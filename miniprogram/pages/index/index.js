@@ -21,6 +21,7 @@ Page({
       });
       const app = getApp();
       app.setToken(res.token);
+      app.globalData.isAdmin = !!res.is_admin;
       if (res.need_profile) {
         wx.redirectTo({ url: "/pages/bind/bind" });
       } else {

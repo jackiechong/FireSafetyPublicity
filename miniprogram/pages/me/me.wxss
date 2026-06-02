@@ -13,8 +13,14 @@
   color: #2e7d32;
   font-size: 26rpx;
 }
-.section-title {
+.section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin: 24rpx 32rpx 8rpx;
+}
+.section-title,
+.identity-bind {
   font-weight: 600;
   color: #1a237e;
 }

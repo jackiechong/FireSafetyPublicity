@@ -7,7 +7,11 @@
     <view class="row"><text class="k">单位</text><text>{{person.organization_name || '-'}}</text></view>
     <view class="row"><text class="k">职务</text><text>{{person.job_title || '-'}}</text></view>
   </view>
-  <view class="section-title">培训记录</view>
+
+  <view class="section-row">
+    <view class="section-title">培训记录</view>
+    <view class="identity-bind" bindtap="goAdminEntry">身份绑定</view>
+  </view>
   <block wx:if="{{list.length === 0}}">
     <view class="empty">暂无记录（需管理端将您加入培训名单）</view>
   </block>

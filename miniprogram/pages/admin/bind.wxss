@@ -1,0 +1,55 @@
+.page {
+  padding: 24rpx;
+}
+.card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+}
+.title {
+  font-size: 34rpx;
+  font-weight: 600;
+  margin-bottom: 16rpx;
+}
+.hint {
+  color: #666;
+  font-size: 26rpx;
+  line-height: 1.5;
+  margin-bottom: 32rpx;
+}
+.code-input {
+  border: 1px solid #ddd;
+  border-radius: 12rpx;
+  padding: 24rpx;
+  font-size: 36rpx;
+  letter-spacing: 8rpx;
+  text-align: center;
+  margin-bottom: 20rpx;
+}
+.fail-tip {
+  color: #d77a00;
+  font-size: 24rpx;
+  line-height: 1.5;
+  margin-bottom: 24rpx;
+}
+.fail-tip.locked {
+  color: #c62828;
+}
+.btn-primary {
+  background: #1a237e;
+  color: #fff;
+}
+.card.ok {
+  color: #2e7d32;
+}
+.sub {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #666;
+}
+.btn-link {
+  margin-top: 24rpx;
+  background: #e8eaf6;
+  color: #1a237e;
+}

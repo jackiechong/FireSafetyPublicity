@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from app.database import Base, SessionLocal, engine, sqlite_migrate_legacy_person_columns
 from app.models import Organization, Person, TrainingAttendance, TrainingSession
-from app.routers import admin, mp, wxoa
+from app.routers import admin, mp, mp_admin, wxoa
 from app.seed import seed
 
 os.makedirs(os.path.join(os.path.dirname(__file__), "..", "data"), exist_ok=True)
@@ -48,6 +48,7 @@ app.add_middleware(
 
 app.include_router(admin.router)
 app.include_router(mp.router)
+app.include_router(mp_admin.router)
 app.include_router(wxoa.router)
 
 
