@@ -55,6 +55,26 @@ function isNotFound(e) {
   return String((e && e.message) || e || "").toLowerCase().includes("not found");
 }
 
+function mergeTypeRows(groups) {
+  const map = {};
+  (groups || []).flat().forEach((row) => {
+    const key = row.org_type_name || row.org_type || "其他部门";
+    if (!map[key]) {
+      map[key] = {
+        org_type: row.org_type || key,
+        org_type_name: key,
+        total_minutes: 0,
+        person_count: 0,
+        organization_count: 0,
+      };
+    }
+    map[key].total_minutes += Number(row.total_minutes || 0);
+    map[key].person_count += Number(row.person_count || 0);
+    map[key].organization_count += Number(row.organization_count || 0);
+  });
+  return Object.keys(map).sort().map((key) => map[key]);
+}
+
 Page({
   data: {
     loading: false,
@@ -100,16 +120,31 @@ Page({
       const districts = await request({
         url: withPeriod("/api/mp/admin/stats/by-district", this.data.periodMode, this.data.periodValue),
       });
-      const list = (districts || []).map((d) => ({
+      const districtRows = (districts || []).map((d) => ({
         ...d,
         total_minutes_text: formatHours(d.total_minutes),
       }));
-      const first = list.find((d) => d.total_minutes > 0) || list[0];
+      const cityMinutes = districtRows.reduce((s, d) => s + Number(d.total_minutes || 0), 0);
+      const citySessions = districtRows.reduce((s, d) => s + Number(d.session_count || 0), 0);
+      const list = [
+        {
+          district_id: 0,
+          district_name: "葫芦岛市",
+          total_minutes: cityMinutes,
+          session_count: citySessions,
+          total_minutes_text: formatHours(cityMinutes),
+        },
+        ...districtRows,
+      ];
+      const first = list[0];
       const currentStillExists = list.some((d) => Number(d.district_id) === Number(this.data.selectedDistrictId));
+      const selected = currentStillExists
+        ? list.find((d) => Number(d.district_id) === Number(this.data.selectedDistrictId))
+        : first;
       this.setData({
         districts: list,
-        selectedDistrictId: currentStillExists ? this.data.selectedDistrictId : first ? first.district_id : 0,
-        selectedDistrictName: currentStillExists ? this.data.selectedDistrictName : first ? first.district_name : "",
+        selectedDistrictId: selected ? selected.district_id : 0,
+        selectedDistrictName: selected ? selected.district_name : "葫芦岛市",
         selectedOrgId: 0,
         selectedOrgName: "",
         selectedPersonId: 0,
@@ -117,7 +152,7 @@ Page({
         personRows: [],
         trainingRows: [],
       });
-      if (this.data.selectedDistrictId) await this.loadDistrictDetail();
+      await this.loadDistrictDetail();
     } catch (e) {
       wx.showToast({ title: e.message || "加载失败", icon: "none" });
     } finally {
@@ -127,12 +162,19 @@ Page({
 
   async loadDistrictDetail() {
     const districtId = this.data.selectedDistrictId;
-    if (!districtId) return;
-    const types = await request({
-      url: withPeriod("/api/mp/admin/stats/types-by-district", this.data.periodMode, this.data.periodValue, {
-        district_id: districtId,
-      }),
-    });
+    let types = [];
+    try {
+      types = await request({
+        url: withPeriod("/api/mp/admin/stats/types-by-district", this.data.periodMode, this.data.periodValue, {
+          district_id: districtId,
+        }),
+      });
+    } catch (e) {
+      if (Number(districtId) !== 0) throw e;
+    }
+    if (Number(districtId) === 0 && !(types || []).some((r) => Number(r.total_minutes || 0) > 0)) {
+      types = await this.loadCitywideTypesFallback();
+    }
     let orgs = [];
     try {
       orgs = await request({
@@ -174,6 +216,24 @@ Page({
       trainingRows: [],
     });
     this.drawPie();
+  },
+
+  async loadCitywideTypesFallback() {
+    const rows = this.data.districts.filter((d) => Number(d.district_id) !== 0);
+    const groups = [];
+    for (let i = 0; i < rows.length; i += 1) {
+      try {
+        const data = await request({
+          url: withPeriod("/api/mp/admin/stats/types-by-district", this.data.periodMode, this.data.periodValue, {
+            district_id: rows[i].district_id,
+          }),
+        });
+        groups.push(data || []);
+      } catch (e) {
+        // 单个县区失败不影响全市兜底汇总。
+      }
+    }
+    return mergeTypeRows(groups);
   },
 
   drawPie() {

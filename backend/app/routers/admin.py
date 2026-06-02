@@ -63,7 +63,7 @@ ORG_TYPE_LABELS = {
     OrgType.culture_tourism: "文旅",
     OrgType.health: "卫建",
     OrgType.commerce: "商务",
-    OrgType.industry_agriculture: "工农业农村",
+    OrgType.industry_agriculture: "农业农村",
     OrgType.development_reform: "发改",
     OrgType.other_department: "其他部门",
     OrgType.department: "其他部门",

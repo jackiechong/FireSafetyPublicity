@@ -17,7 +17,7 @@ Page({
     customOrgName: "",
     customOrgType: "other_department",
     customOrgTypeIndex: 0,
-    customOrgTypeOptions: ["应急", "教育", "民政", "文旅", "卫建", "商务", "工农业农村", "发改", "其他部门"],
+    customOrgTypeOptions: ["应急", "教育", "民政", "文旅", "卫建", "商务", "农业农村", "发改", "其他部门"],
     customOrgTypeValues: [
       "emergency",
       "education",

@@ -82,7 +82,7 @@ const orgTypes = [
   { value: "culture_tourism", label: "文旅" },
   { value: "health", label: "卫建" },
   { value: "commerce", label: "商务" },
-  { value: "industry_agriculture", label: "工农业农村" },
+  { value: "industry_agriculture", label: "农业农村" },
   { value: "development_reform", label: "发改" },
   { value: "other_department", label: "其他部门" },
 ];

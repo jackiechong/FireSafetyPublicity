@@ -4,13 +4,14 @@ from datetime import datetime
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import brigade_filter_brigade_id, get_current_mp_admin, get_current_person_token
 from app.models import AdminRole, AdminUser, AdminWxBindCode, Brigade, District, Organization, Person
 from app.models import TrainingAttendance, TrainingSession
-from app.routers.admin import _build_quick_training_out, create_training_quick
+from app.routers.admin import ORG_TYPE_LABELS, _build_quick_training_out, create_training_quick
 from app.routers.admin import stats_by_district, stats_orgs_by_district, stats_persons_by_organization, stats_types_by_district
 from app.schemas import (
     DistrictOut,
@@ -147,6 +148,8 @@ def mp_admin_stats_types_by_district(
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
 ):
+    if district_id == 0:
+        return _mp_admin_stats_types_citywide(admin, db, start, end)
     return stats_types_by_district(admin, db, district_id, start, end)
 
 
@@ -158,7 +161,127 @@ def mp_admin_stats_orgs_by_district(
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
 ):
+    if district_id == 0:
+        return _mp_admin_stats_orgs_citywide(admin, db, start, end)
     return stats_orgs_by_district(admin, db, district_id, start, end)
+
+
+def _mp_admin_stats_types_citywide(
+    admin: AdminUser,
+    db: Session,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+) -> list[StatsTypeInDistrictItem]:
+    bid = brigade_filter_brigade_id(admin)
+    q_orgs = db.query(Organization)
+    if bid is not None:
+        q_orgs = q_orgs.filter(Organization.brigade_id == bid)
+    orgs = q_orgs.all()
+    org_type_by_id = {o.id: o.org_type for o in orgs}
+    counts: dict[str, int] = {}
+    for org in orgs:
+        label = ORG_TYPE_LABELS.get(org.org_type, "其他部门")
+        counts[label] = counts.get(label, 0) + 1
+
+    q = (
+        db.query(
+            TrainingSession.organization_id,
+            func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0),
+            func.count(func.distinct(TrainingAttendance.person_id)),
+        )
+        .select_from(TrainingSession)
+        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
+        .filter(TrainingSession.organization_id.in_(list(org_type_by_id.keys()) or [-1]))
+        .group_by(TrainingSession.organization_id)
+    )
+    if start:
+        q = q.filter(TrainingSession.start_at >= start)
+    if end:
+        q = q.filter(TrainingSession.start_at < end)
+
+    totals: dict[str, dict[str, int]] = {
+        label: {"total_minutes": 0, "person_count": 0, "organization_count": count}
+        for label, count in counts.items()
+    }
+    for oid, minutes, persons in q.all():
+        label = ORG_TYPE_LABELS.get(org_type_by_id.get(oid), "其他部门")
+        if label not in totals:
+            totals[label] = {"total_minutes": 0, "person_count": 0, "organization_count": 0}
+        totals[label]["total_minutes"] += int(minutes or 0)
+        totals[label]["person_count"] += int(persons or 0)
+
+    return [
+        StatsTypeInDistrictItem(
+            org_type=label,
+            org_type_name=label,
+            total_minutes=values["total_minutes"],
+            person_count=values["person_count"],
+            organization_count=values["organization_count"],
+        )
+        for label, values in sorted(totals.items(), key=lambda item: item[0])
+    ]
+
+
+def _mp_admin_stats_orgs_citywide(
+    admin: AdminUser,
+    db: Session,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+) -> list[StatsOrgInDistrictItem]:
+    bid = brigade_filter_brigade_id(admin)
+    sub_mins = (
+        db.query(
+            TrainingSession.organization_id.label("oid"),
+            func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0).label("tm"),
+        )
+        .select_from(TrainingSession)
+        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
+        .group_by(TrainingSession.organization_id)
+    )
+    if start:
+        sub_mins = sub_mins.filter(TrainingSession.start_at >= start)
+    if end:
+        sub_mins = sub_mins.filter(TrainingSession.start_at < end)
+    sub_mins = sub_mins.subquery()
+
+    sub_pc = (
+        db.query(
+            TrainingSession.organization_id.label("oid"),
+            func.count(func.distinct(TrainingAttendance.person_id)).label("pc"),
+        )
+        .select_from(TrainingSession)
+        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
+        .group_by(TrainingSession.organization_id)
+    )
+    if start:
+        sub_pc = sub_pc.filter(TrainingSession.start_at >= start)
+    if end:
+        sub_pc = sub_pc.filter(TrainingSession.start_at < end)
+    sub_pc = sub_pc.subquery()
+
+    q = (
+        db.query(
+            Organization.id,
+            Organization.name,
+            func.coalesce(sub_mins.c.tm, 0),
+            func.coalesce(sub_pc.c.pc, 0),
+        )
+        .select_from(Organization)
+        .outerjoin(sub_mins, sub_mins.c.oid == Organization.id)
+        .outerjoin(sub_pc, sub_pc.c.oid == Organization.id)
+    )
+    if bid is not None:
+        q = q.filter(Organization.brigade_id == bid)
+    rows = q.order_by(func.coalesce(sub_mins.c.tm, 0).desc(), Organization.name).limit(500).all()
+    return [
+        StatsOrgInDistrictItem(
+            organization_id=row[0],
+            organization_name=row[1],
+            total_minutes=int(row[2] or 0),
+            person_count=int(row[3] or 0),
+        )
+        for row in rows
+    ]
 
 
 @router.get("/stats/persons-by-organization", response_model=List[StatsPersonItem])

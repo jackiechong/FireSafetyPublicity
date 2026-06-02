@@ -7,7 +7,7 @@ const ORG_TYPE_LABELS = {
   culture_tourism: "文旅",
   health: "卫建",
   commerce: "商务",
-  industry_agriculture: "工农业农村",
+  industry_agriculture: "农业农村",
   development_reform: "发改",
   other_department: "其他部门",
   department: "其他部门",
