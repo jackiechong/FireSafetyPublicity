@@ -26,6 +26,7 @@ from app.schemas import (
     AdminAccountUpdate,
     AdminLogin,
     AdminPasswordReset,
+    AdminPersonManageIn,
     AdminPersonOut,
     AdminPersonRebindIn,
     AdminUserOut,
@@ -412,7 +413,7 @@ def stats_by_district(
     if start:
         q_sess = q_sess.filter(TrainingSession.start_at >= start)
     if end:
-        q_sess = q_sess.filter(TrainingSession.start_at <= end)
+        q_sess = q_sess.filter(TrainingSession.start_at < end)
     sess_rows = {r[0]: int(r[1]) for r in q_sess.group_by(Organization.district_id).all()}
 
     q_min = (
@@ -429,7 +430,7 @@ def stats_by_district(
     if start:
         q_min = q_min.filter(TrainingSession.start_at >= start)
     if end:
-        q_min = q_min.filter(TrainingSession.start_at <= end)
+        q_min = q_min.filter(TrainingSession.start_at < end)
     min_rows = {r[0]: int(r[1] or 0) for r in q_min.group_by(Organization.district_id).all()}
 
     districts = db.query(District).order_by(District.id).all()
@@ -495,6 +496,8 @@ def stats_orgs_by_district(
     admin: Annotated[AdminUser, Depends(get_current_admin)],
     db: Session = Depends(get_db),
     district_id: int = Query(..., description="区县 ID"),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
 ):
     """某区县内全部单位及培训时长、参训人数；无参训记录的单位时长为 0，仍出现在列表中。
 
@@ -510,7 +513,12 @@ def stats_orgs_by_district(
         .select_from(TrainingSession)
         .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
         .group_by(TrainingSession.organization_id)
-    ).subquery()
+    )
+    if start:
+        sub_mins = sub_mins.filter(TrainingSession.start_at >= start)
+    if end:
+        sub_mins = sub_mins.filter(TrainingSession.start_at < end)
+    sub_mins = sub_mins.subquery()
 
     sub_pc = (
         db.query(
@@ -520,7 +528,12 @@ def stats_orgs_by_district(
         .select_from(TrainingSession)
         .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
         .group_by(TrainingSession.organization_id)
-    ).subquery()
+    )
+    if start:
+        sub_pc = sub_pc.filter(TrainingSession.start_at >= start)
+    if end:
+        sub_pc = sub_pc.filter(TrainingSession.start_at < end)
+    sub_pc = sub_pc.subquery()
 
     q = (
         db.query(
@@ -553,6 +566,8 @@ def stats_types_by_district(
     admin: Annotated[AdminUser, Depends(get_current_admin)],
     db: Session = Depends(get_db),
     district_id: int = Query(..., description="区县 ID"),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
 ):
     """某区县内按单位类型汇总培训时长、人数和单位数量。"""
     bid = brigade_filter_brigade_id(admin)
@@ -577,6 +592,10 @@ def stats_types_by_district(
         .filter(TrainingSession.organization_id.in_(list(org_type_by_id.keys()) or [-1]))
         .group_by(TrainingSession.organization_id)
     )
+    if start:
+        q = q.filter(TrainingSession.start_at >= start)
+    if end:
+        q = q.filter(TrainingSession.start_at < end)
     rows = q.all()
     totals: dict[str, dict[str, int]] = {
         label: {"total_minutes": 0, "person_count": 0, "organization_count": count}
@@ -669,6 +688,8 @@ def stats_persons_by_organization(
     admin: Annotated[AdminUser, Depends(get_current_admin)],
     db: Session = Depends(get_db),
     organization_id: int = Query(..., description="单位 ID"),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
 ):
     """某单位下已参训人员及每人时长、次数。"""
     org = db.get(Organization, organization_id)
@@ -689,6 +710,10 @@ def stats_persons_by_organization(
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
         .filter(TrainingSession.organization_id == organization_id)
     )
+    if start:
+        query = query.filter(TrainingSession.start_at >= start)
+    if end:
+        query = query.filter(TrainingSession.start_at < end)
     rows = (
         query.group_by(Person.id, Person.name, Person.phone)
         .order_by(func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0).desc())
@@ -812,6 +837,8 @@ def create_admin_wx_bind_code(
 def _person_out(person: Person, db: Session) -> AdminPersonOut:
     district = db.get(District, person.district_id) if person.district_id else None
     org = db.get(Organization, person.organization_id) if person.organization_id else None
+    admin = db.query(AdminUser).filter(AdminUser.wx_openid == person.openid).first()
+    admin_brigade = db.get(Brigade, admin.brigade_id) if admin and admin.brigade_id else None
     return AdminPersonOut(
         person_id=person.id,
         name=person.name or "",
@@ -821,7 +848,98 @@ def _person_out(person: Person, db: Session) -> AdminPersonOut:
         organization_id=person.organization_id,
         organization_name=org.name if org else None,
         job_title=person.job_title,
+        wechat_bound=bool(person.openid),
+        is_admin=bool(admin and admin.is_active),
+        admin_role=admin.role.value if admin else None,
+        admin_brigade_id=admin.brigade_id if admin else None,
+        admin_brigade_name=admin_brigade.name if admin_brigade else None,
+        created_at=person.created_at,
     )
+
+
+@router.get("/persons", response_model=List[AdminPersonOut])
+def list_persons(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    q: Optional[str] = Query(None, description="姓名、手机号、单位关键词"),
+    district_id: Optional[int] = Query(None),
+    organization_id: Optional[int] = Query(None),
+):
+    query = db.query(Person).outerjoin(Organization, Person.organization_id == Organization.id)
+    query = query.filter(Person.name.isnot(None), Person.phone.isnot(None), Person.organization_id.isnot(None))
+    bid = brigade_filter_brigade_id(admin)
+    if bid is not None:
+        query = query.filter(Organization.brigade_id == bid)
+    if district_id is not None:
+        query = query.filter(Person.district_id == district_id)
+    if organization_id is not None:
+        query = query.filter(Person.organization_id == organization_id)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        query = query.filter(or_(Person.name.like(like), Person.phone.like(like), Organization.name.like(like)))
+    rows = query.order_by(Person.updated_at.desc(), Person.id.desc()).limit(500).all()
+    return [_person_out(p, db) for p in rows]
+
+
+def _sync_person_admin(person: Person, org: Organization, is_admin: bool, db: Session) -> None:
+    existing = db.query(AdminUser).filter(AdminUser.wx_openid == person.openid).first()
+    if not is_admin:
+        if existing:
+            existing.wx_openid = None
+            existing.wx_bound_at = None
+        return
+    if existing:
+        existing.role = AdminRole.brigade
+        existing.brigade_id = org.brigade_id
+        existing.is_active = True
+        return
+    username_base = f"mp_{person.id}"
+    username = username_base
+    suffix = 1
+    while db.query(AdminUser).filter(AdminUser.username == username).first():
+        suffix += 1
+        username = f"{username_base}_{suffix}"
+    db.add(
+        AdminUser(
+            username=username,
+            password_hash=hash_password(secrets.token_urlsafe(16)),
+            role=AdminRole.brigade,
+            brigade_id=org.brigade_id,
+            is_active=True,
+            wx_openid=person.openid,
+            wx_bound_at=datetime.utcnow(),
+        )
+    )
+
+
+@router.patch("/persons/{person_id}", response_model=AdminPersonOut)
+def manage_person_profile(
+    person_id: int,
+    body: AdminPersonManageIn,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    person = db.get(Person, person_id)
+    if not person:
+        raise HTTPException(404, "人员不存在")
+    if not db.get(District, body.district_id):
+        raise HTTPException(400, "区县不存在")
+    org = db.get(Organization, body.organization_id)
+    if not org or org.district_id != body.district_id:
+        raise HTTPException(400, "所选单位与区县不一致，或单位不存在")
+    dup = db.query(Person).filter(Person.phone == body.phone, Person.id != person.id).first()
+    if dup:
+        raise HTTPException(400, "该手机号已被其他人员绑定")
+
+    person.name = body.name.strip()
+    person.phone = body.phone.strip()
+    person.district_id = body.district_id
+    person.organization_id = body.organization_id
+    person.job_title = body.job_title.strip() if body.job_title else None
+    _sync_person_admin(person, org, body.is_admin, db)
+    db.commit()
+    db.refresh(person)
+    return _person_out(person, db)
 
 
 @router.patch("/persons/{person_id}/rebind", response_model=AdminPersonOut)

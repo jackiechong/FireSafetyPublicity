@@ -301,6 +301,10 @@ class AdminPersonRebindIn(BaseModel):
     job_title: Optional[str] = Field(default=None, max_length=64)
 
 
+class AdminPersonManageIn(AdminPersonRebindIn):
+    is_admin: bool = False
+
+
 class AdminPersonOut(BaseModel):
     person_id: int
     name: str
@@ -310,6 +314,12 @@ class AdminPersonOut(BaseModel):
     organization_id: Optional[int] = None
     organization_name: Optional[str] = None
     job_title: Optional[str] = None
+    wechat_bound: bool = True
+    is_admin: bool = False
+    admin_role: Optional[str] = None
+    admin_brigade_id: Optional[int] = None
+    admin_brigade_name: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 
 class StatsOrgInDistrictItem(BaseModel):

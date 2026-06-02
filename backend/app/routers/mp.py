@@ -3,6 +3,7 @@ from typing import Annotated, List
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -133,7 +134,18 @@ def mp_organizations(
     if q.strip():
         like = f"%{q.strip()}%"
         query = query.filter(Organization.name.like(like))
-    rows = query.order_by(Organization.name).limit(100).all()
+    district = db.get(District, district_id)
+    priority_names = []
+    if district and district.name == "龙港区":
+        priority_names = ["葫芦岛市消防救援支队", "龙港区消防救援大队"]
+    elif district:
+        priority_names = [f"{district.name}消防救援大队"]
+    priority_order = case(
+        {name: idx for idx, name in enumerate(priority_names)},
+        value=Organization.name,
+        else_=len(priority_names),
+    )
+    rows = query.order_by(priority_order, Organization.name).limit(100).all()
     return [MpOrgListItem(id=o.id, name=o.name, org_type=o.org_type.value) for o in rows]
 
 

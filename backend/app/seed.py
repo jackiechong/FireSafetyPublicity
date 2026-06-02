@@ -140,6 +140,7 @@ def seed():
         _ensure_districts(db)
         _ensure_brigades(db)
         _retire_removed_brigades(db)
+        _ensure_fire_brigade_organizations(db)
         _ensure_other_organizations(db)
         _reclassify_demo_org_types(db)
 
@@ -196,6 +197,51 @@ def _ensure_other_organizations(db: Session) -> None:
                 brigade_id=brigade.id,
                 district_id=district.id,
                 remark="SYSTEM_OTHER",
+            )
+        )
+        changed = True
+    if changed:
+        db.commit()
+
+
+def _ensure_fire_brigade_organizations(db: Session) -> None:
+    """补齐小程序绑定页优先展示的消防支队/大队单位。"""
+    districts = {d.name: d for d in db.query(District).all()}
+    brigades_by_code = {b.code: b for b in db.query(Brigade).all()}
+    specs: list[tuple[str, str, str]] = []
+    for district_name, brigade_code in DISTRICT_DEFAULT_BRIGADE.items():
+        if district_name == "龙港区":
+            specs.append(("葫芦岛市消防救援支队", district_name, brigade_code))
+            specs.append(("龙港区消防救援大队", district_name, brigade_code))
+        else:
+            specs.append((f"{district_name}消防救援大队", district_name, brigade_code))
+
+    changed = False
+    for org_name, district_name, brigade_code in specs:
+        district = districts.get(district_name)
+        brigade = brigades_by_code.get(brigade_code)
+        if not district or not brigade:
+            continue
+        existing = (
+            db.query(Organization)
+            .filter(Organization.district_id == district.id, Organization.name == org_name)
+            .first()
+        )
+        if existing:
+            if existing.brigade_id != brigade.id:
+                existing.brigade_id = brigade.id
+                changed = True
+            if existing.org_type != OrgType.emergency:
+                existing.org_type = OrgType.emergency
+                changed = True
+            continue
+        db.add(
+            Organization(
+                name=org_name,
+                org_type=OrgType.emergency,
+                brigade_id=brigade.id,
+                district_id=district.id,
+                remark="SYSTEM_FIRE_BRIGADE",
             )
         )
         changed = True

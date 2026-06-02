@@ -2,8 +2,30 @@
   <div class="page">
     <h2>统计数据</h2>
     <p class="tip">
-      默认查看全市各区县培训时长对比；选择区县后按单位类型查看培训时长占比。下方搜索可快速定位单位或人员。
+      默认查看葫芦岛地区年度培训时长；可按年、月、日切换周期，场次和时长随选择同步变化。
     </p>
+
+    <el-form :inline="true" class="period-toolbar">
+      <el-form-item label="统计周期">
+        <el-radio-group v-model="periodMode" @change="onPeriodModeChange">
+          <el-radio-button label="year">年</el-radio-button>
+          <el-radio-button label="month">月</el-radio-button>
+          <el-radio-button label="date">日</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
+      <el-form-item>
+        <el-date-picker
+          v-model="periodValue"
+          :type="periodMode"
+          :clearable="false"
+          :format="periodFormat"
+          :value-format="periodValueFormat"
+          placeholder="选择时间"
+          style="width: 170px"
+          @change="onPeriodChange"
+        />
+      </el-form-item>
+    </el-form>
 
     <div class="search-bar">
       <el-autocomplete
@@ -82,7 +104,7 @@
           <el-option
             v-for="o in orgsInDistrict"
             :key="o.organization_id"
-            :label="`${o.organization_name}（${formatTrainingMinutes(o.total_minutes)} · ${o.person_count}人）`"
+            :label="`${o.organization_name}（${formatTrainingHours(o.total_minutes)} · ${o.person_count}人）`"
             :value="o.organization_id"
           />
         </el-select>
@@ -100,7 +122,7 @@
         <el-table-column prop="session_count" label="参训次数" width="100" />
         <el-table-column label="累计时长" min-width="140">
           <template #default="{ row }">
-            {{ formatTrainingMinutes(row.total_minutes) }}
+            {{ formatTrainingHours(row.total_minutes) }}
           </template>
         </el-table-column>
         <el-table-column v-if="canRebindPersons" label="操作" width="90" fixed="right">
@@ -151,7 +173,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import * as echarts from "echarts";
 import { ElMessage } from "element-plus";
 import http from "../api/http";
-import { formatMinutesAxisDays, formatTrainingMinutes } from "../utils/duration";
+import { formatMinutesAxisHours, formatTrainingHours } from "../utils/duration";
 
 const chartRef = ref(null);
 let chart;
@@ -178,8 +200,22 @@ const personRebindForm = reactive({
 });
 /** 仅在 stats/search-suggest 404（旧版后端）时提示一次 */
 const searchLegacyHintShown = ref(false);
+const periodMode = ref("year");
+const periodValue = ref(new Date());
 
 const canRebindPersons = computed(() => currentAdmin.value?.role === "detachment");
+
+const periodFormat = computed(() => {
+  if (periodMode.value === "year") return "YYYY年";
+  if (periodMode.value === "month") return "YYYY年MM月";
+  return "YYYY年MM月DD日";
+});
+
+const periodValueFormat = computed(() => {
+  if (periodMode.value === "year") return "YYYY";
+  if (periodMode.value === "month") return "YYYY-MM";
+  return "YYYY-MM-DD";
+});
 
 const displayTotalMinutes = computed(() => {
   if (districtFilter.value) {
@@ -188,7 +224,7 @@ const displayTotalMinutes = computed(() => {
   return districtData.value.reduce((s, d) => s + d.total_minutes, 0);
 });
 
-const displayTotalMinutesLabel = computed(() => formatTrainingMinutes(displayTotalMinutes.value));
+const displayTotalMinutesLabel = computed(() => formatTrainingHours(displayTotalMinutes.value));
 
 const displaySessionCount = computed(() => {
   if (districtFilter.value != null && districtFilter.value !== "") {
@@ -205,6 +241,38 @@ const displayExtra = computed(() => {
   }
   return districtData.value.filter((d) => d.total_minutes > 0 || d.session_count > 0).length;
 });
+
+function normalizePeriodValue() {
+  if (periodValue.value instanceof Date) return periodValue.value;
+  const raw = String(periodValue.value || "");
+  if (periodMode.value === "year") return new Date(Number(raw), 0, 1);
+  if (periodMode.value === "month") {
+    const [y, m] = raw.split("-").map(Number);
+    return new Date(y, (m || 1) - 1, 1);
+  }
+  const [y, m, d] = raw.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+function apiDate(dt) {
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const d = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}T00:00:00`;
+}
+
+function statsParams(extra = {}) {
+  const start = normalizePeriodValue();
+  const end = new Date(start);
+  if (periodMode.value === "year") end.setFullYear(start.getFullYear() + 1);
+  else if (periodMode.value === "month") end.setMonth(start.getMonth() + 1);
+  else end.setDate(start.getDate() + 1);
+  return {
+    ...extra,
+    start: apiDate(start),
+    end: apiDate(end),
+  };
+}
 
 /** Element Plus 会 await 该函数，并在拿到返回值后调用内部 cb；失败时须返回 [] 以结束 loading */
 async function querySearch(queryString) {
@@ -277,7 +345,7 @@ async function loadOrgsForDistrict() {
     let statsMap = new Map();
     try {
       const { data: statsList } = await http.get("/api/admin/stats/orgs-by-district", {
-        params: { district_id: did },
+        params: statsParams({ district_id: did }),
       });
       statsMap = new Map((statsList || []).map((x) => [x.organization_id, x]));
     } catch (statsErr) {
@@ -293,7 +361,7 @@ async function loadOrgsForDistrict() {
       };
     });
     const { data: typeStats } = await http.get("/api/admin/stats/types-by-district", {
-      params: { district_id: did },
+      params: statsParams({ district_id: did }),
     });
     typeStatsInDistrict.value = typeStats || [];
   } catch (e) {
@@ -343,7 +411,7 @@ async function loadCurrentAdmin() {
 }
 
 async function loadDistrictStats() {
-  const { data } = await http.get("/api/admin/stats/by-district");
+  const { data } = await http.get("/api/admin/stats/by-district", { params: statsParams() });
   districtData.value = data;
 }
 
@@ -360,7 +428,7 @@ function renderBarChart() {
         trigger: "axis",
         formatter: (items) => {
           const p = items[0];
-          return `${p.name}<br/>${formatTrainingMinutes(p.value)}`;
+          return `${p.name}<br/>${formatTrainingHours(p.value)}`;
         },
       },
       grid: { left: 56, right: 24, bottom: 88, top: 48 },
@@ -386,7 +454,7 @@ function renderBarChart() {
         type: "value",
         name: "",
         axisLabel: {
-          formatter: (v) => formatMinutesAxisDays(v),
+          formatter: (v) => formatMinutesAxisHours(v),
         },
       },
       series: [
@@ -435,7 +503,7 @@ function renderOrgPie() {
       },
       tooltip: {
         trigger: "item",
-        formatter: (p) => `${p.name}<br/>${formatTrainingMinutes(p.value)} (${p.percent}%)`,
+        formatter: (p) => `${p.name}<br/>${formatTrainingHours(p.value)} (${p.percent}%)`,
       },
       legend: { bottom: 0, type: "scroll" },
       series: [
@@ -474,13 +542,30 @@ async function onDistrictChange() {
   await renderChart();
 }
 
+async function onPeriodChange() {
+  orgPersonRows.value = [];
+  await loadDistrictStats();
+  if (districtFilter.value) {
+    await loadOrgsForDistrict();
+  }
+  if (orgFilter.value) {
+    await onOrgChange();
+  }
+  await renderChart();
+}
+
+async function onPeriodModeChange() {
+  periodValue.value = new Date();
+  await onPeriodChange();
+}
+
 async function onOrgChange() {
   orgPersonRows.value = [];
   if (!orgFilter.value) return;
   orgPersonLoading.value = true;
   try {
     const { data } = await http.get("/api/admin/stats/persons-by-organization", {
-      params: { organization_id: Number(orgFilter.value) },
+      params: statsParams({ organization_id: Number(orgFilter.value) }),
     });
     orgPersonRows.value = data;
   } finally {
@@ -568,6 +653,12 @@ h2 {
 }
 .search-bar {
   margin-bottom: 20px;
+}
+.period-toolbar {
+  margin: 16px 0 12px;
+  padding: 12px 14px;
+  background: #f8f9fd;
+  border-radius: 8px;
 }
 .ac-item {
   padding: 6px 0;

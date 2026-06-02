@@ -1,7 +1,7 @@
 <view class="wrap">
   <view class="hero">
     <view class="title">葫芦岛市消防救援支队</view>
-    <view class="sub">培训实名制</view>
+    <view class="sub">消防培训</view>
   </view>
   <view class="card">
     <button class="btn-primary" loading="{{loading}}" bindtap="onLogin">微信登录</button>

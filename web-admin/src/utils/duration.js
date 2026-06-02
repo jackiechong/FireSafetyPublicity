@@ -27,3 +27,17 @@ export function formatMinutesAxisDays(minutes) {
   if (!Number.isFinite(m) || m < 0) return "—";
   return `${Math.round(m / MINUTES_PER_DAY)}d`;
 }
+
+/** 数据看板培训时长：统一按小时展示，保留 1 位小数。 */
+export function formatTrainingHours(minutes) {
+  const m = Number(minutes);
+  if (!Number.isFinite(m) || m < 0) return "—";
+  return `${(m / MINUTES_PER_HOUR).toFixed(1)}小时`;
+}
+
+/** 数据看板坐标轴：分钟换算为小时，保留 1 位小数。 */
+export function formatMinutesAxisHours(minutes) {
+  const m = Number(minutes);
+  if (!Number.isFinite(m) || m < 0) return "—";
+  return (m / MINUTES_PER_HOUR).toFixed(1);
+}
