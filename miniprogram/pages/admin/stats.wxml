@@ -1,0 +1,47 @@
+<view class="page">
+  <view class="summary">
+    <view class="summary-item">
+      <view class="summary-label">培训总时长</view>
+      <view class="summary-value">{{totalMinutesText}}</view>
+    </view>
+    <view class="summary-item">
+      <view class="summary-label">培训场次</view>
+      <view class="summary-value">{{sessionCount}}</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">区县培训时长</view>
+    <scroll-view scroll-x class="district-scroll">
+      <view class="district-list">
+        <view
+          wx:for="{{districts}}"
+          wx:key="district_id"
+          class="district-pill {{selectedDistrictId === item.district_id ? 'active' : ''}}"
+          data-id="{{item.district_id}}"
+          bindtap="onPickDistrict"
+        >
+          <view>{{item.district_name}}</view>
+          <view class="pill-meta">{{item.total_minutes_text}}</view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">{{selectedDistrictName}} 类型占比</view>
+    <block wx:if="{{typeStats.length}}">
+      <view wx:for="{{typeStats}}" wx:key="org_type" class="type-row">
+        <view class="type-head">
+          <text class="type-name">{{item.org_type_name}}</text>
+          <text class="type-num">{{item.total_minutes_text}} · {{item.person_count}}人</text>
+        </view>
+        <view class="bar">
+          <view class="bar-fill" style="width: {{item.percent}}%;"></view>
+        </view>
+        <view class="type-foot">{{item.organization_count}} 个单位 · {{item.percent}}%</view>
+      </view>
+    </block>
+    <view wx:else class="empty">暂无类型统计数据</view>
+  </view>
+</view>

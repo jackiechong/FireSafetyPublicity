@@ -22,7 +22,7 @@
           <el-option
             v-for="o in orgsInDistrict"
             :key="o.id"
-            :label="`${o.name}（${o.org_type === 'department' ? '行业部门' : '企业'}）`"
+            :label="`${o.name}（${orgTypeName(o.org_type)}）`"
             :value="o.id"
           />
         </el-select>
@@ -130,6 +130,23 @@ const qrcodeOpen = ref(false);
 const qrcodeData = ref(null);
 const qrCanvas = ref(null);
 const qrcodeUrl = ref("");
+const orgTypeLabels = {
+  emergency: "应急",
+  education: "教育",
+  civil_affairs: "民政",
+  culture_tourism: "文旅",
+  health: "卫建",
+  commerce: "商务",
+  industry_agriculture: "工农业农村",
+  development_reform: "发改",
+  other_department: "其他部门",
+  department: "其他部门",
+  enterprise: "其他部门",
+};
+
+function orgTypeName(value) {
+  return orgTypeLabels[value] || "其他部门";
+}
 
 const universalLoginDisplay = computed(() => {
   const raw = qrcodeData.value?.portal_login_url;

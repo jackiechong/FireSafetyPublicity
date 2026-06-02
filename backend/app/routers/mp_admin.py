@@ -11,6 +11,7 @@ from app.deps import brigade_filter_brigade_id, get_current_mp_admin, get_curren
 from app.models import AdminRole, AdminUser, AdminWxBindCode, Brigade, District, Organization, Person
 from app.models import TrainingSession
 from app.routers.admin import _build_quick_training_out, create_training_quick
+from app.routers.admin import stats_by_district, stats_types_by_district
 from app.schemas import (
     DistrictOut,
     MpAdminMeOut,
@@ -19,6 +20,8 @@ from app.schemas import (
     MpWxBindOut,
     QuickTrainingCreate,
     QuickTrainingOut,
+    StatsDistrictItem,
+    StatsTypeInDistrictItem,
     TrainingSessionPatch,
     TrainingSessionOut,
 )
@@ -121,6 +124,23 @@ def mp_admin_districts(
     db: Session = Depends(get_db),
 ):
     return db.query(District).order_by(District.id).all()
+
+
+@router.get("/stats/by-district", response_model=List[StatsDistrictItem])
+def mp_admin_stats_by_district(
+    admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
+    db: Session = Depends(get_db),
+):
+    return stats_by_district(admin, db)
+
+
+@router.get("/stats/types-by-district", response_model=List[StatsTypeInDistrictItem])
+def mp_admin_stats_types_by_district(
+    district_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
+    db: Session = Depends(get_db),
+):
+    return stats_types_by_district(admin, db, district_id)
 
 
 @router.get("/organizations", response_model=List[MpOrgListItem])

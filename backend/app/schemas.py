@@ -207,7 +207,7 @@ class MpProfileIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)
     phone: str = Field(..., min_length=11, max_length=11)
     district_id: int = Field(..., description="所属区县")
-    organization_id: int = Field(..., description="所属单位（行业部门/企业）")
+    organization_id: int = Field(..., description="所属单位")
     job_title: Optional[str] = Field(default=None, max_length=64, description="职务/岗位")
 
 
@@ -215,7 +215,7 @@ class MpOrganizationCreateIn(BaseModel):
     """小程序绑定页选「其他单位」时自助新增单位。"""
     district_id: int = Field(..., ge=1)
     name: str = Field(..., min_length=2, max_length=256)
-    org_type: OrgType = OrgType.enterprise
+    org_type: OrgType = OrgType.other_department
 
 
 class MpPersonOut(BaseModel):
@@ -317,6 +317,14 @@ class StatsOrgInDistrictItem(BaseModel):
     organization_name: str
     total_minutes: int
     person_count: int
+
+
+class StatsTypeInDistrictItem(BaseModel):
+    org_type: str
+    org_type_name: str
+    total_minutes: int
+    person_count: int
+    organization_count: int
 
 
 class StatsSearchItem(BaseModel):

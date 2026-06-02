@@ -2,7 +2,7 @@
   <div class="page">
     <h2>统计数据</h2>
     <p class="tip">
-      默认查看全市各区县培训时长对比；选择区县后可查看区内各单位时长占比；再选单位可查看该单位参训人员及每人时长。下方搜索可快速定位单位或人员。
+      默认查看全市各区县培训时长对比；选择区县后按单位类型查看培训时长占比。下方搜索可快速定位单位或人员。
     </p>
 
     <div class="search-bar">
@@ -13,7 +13,7 @@
         highlight-first-item
         :debounce="250"
         popper-class="stats-search-suggest-popper"
-        placeholder="搜索企业、单位名称，或人员姓名 / 手机号"
+        placeholder="搜索单位名称，或人员姓名 / 手机号"
         style="width: min(100%, 520px)"
         value-key="value"
         fit-input-width
@@ -46,7 +46,7 @@
       </el-col>
       <el-col :xs="12" :sm="6">
         <el-card shadow="hover" class="sum-card">
-          <div class="sum-label">{{ districtFilter ? "区内单位数" : "涉及区县数" }}</div>
+          <div class="sum-label">{{ districtFilter ? "涉及类型数" : "涉及区县数" }}</div>
           <div class="sum-value">{{ displayExtra }}</div>
         </el-card>
       </el-col>
@@ -70,7 +70,7 @@
           <el-option v-for="d in districtOptions" :key="d.id" :label="d.name" :value="d.id" />
         </el-select>
       </el-form-item>
-      <el-form-item v-if="districtFilter" label="单位">
+      <el-form-item v-if="false" label="单位">
         <el-select
           v-model="orgFilter"
           clearable
@@ -161,6 +161,7 @@ const districtOptions = ref([]);
 const districtData = ref([]);
 const districtFilter = ref();
 const orgsInDistrict = ref([]);
+const typeStatsInDistrict = ref([]);
 const orgFilter = ref();
 const orgPersonRows = ref([]);
 const orgPersonLoading = ref(false);
@@ -182,7 +183,7 @@ const canRebindPersons = computed(() => currentAdmin.value?.role === "detachment
 
 const displayTotalMinutes = computed(() => {
   if (districtFilter.value) {
-    return orgsInDistrict.value.reduce((s, o) => s + o.total_minutes, 0);
+    return typeStatsInDistrict.value.reduce((s, o) => s + o.total_minutes, 0);
   }
   return districtData.value.reduce((s, d) => s + d.total_minutes, 0);
 });
@@ -200,7 +201,7 @@ const displaySessionCount = computed(() => {
 
 const displayExtra = computed(() => {
   if (districtFilter.value) {
-    return orgsInDistrict.value.length;
+    return typeStatsInDistrict.value.filter((x) => x.total_minutes > 0 || x.organization_count > 0).length;
   }
   return districtData.value.filter((d) => d.total_minutes > 0 || d.session_count > 0).length;
 });
@@ -234,7 +235,7 @@ async function querySearch(queryString) {
         return (orgs || []).slice(0, 20).map((o) => {
           const dname =
             districtOptions.value.find((x) => Number(x.id) === Number(o.district_id))?.name || "";
-          const ot = o.org_type === "enterprise" ? "企业" : "行业部门";
+          const ot = "其他部门";
           return {
             kind: "organization",
             id: o.id,
@@ -265,6 +266,7 @@ async function querySearch(queryString) {
 async function loadOrgsForDistrict() {
   if (districtFilter.value == null || districtFilter.value === "") {
     orgsInDistrict.value = [];
+    typeStatsInDistrict.value = [];
     return;
   }
   const did = Number(districtFilter.value);
@@ -290,9 +292,14 @@ async function loadOrgsForDistrict() {
         person_count: s?.person_count ?? 0,
       };
     });
+    const { data: typeStats } = await http.get("/api/admin/stats/types-by-district", {
+      params: { district_id: did },
+    });
+    typeStatsInDistrict.value = typeStats || [];
   } catch (e) {
     console.error(e);
     orgsInDistrict.value = [];
+    typeStatsInDistrict.value = [];
   }
 }
 
@@ -400,16 +407,16 @@ function renderBarChart() {
 function renderOrgPie() {
   if (!chartRef.value) return;
   if (!chart) chart = echarts.init(chartRef.value);
-  const list = orgsInDistrict.value.filter((o) => o.total_minutes > 0);
+  const list = typeStatsInDistrict.value.filter((o) => o.total_minutes > 0);
   const did = districtFilter.value != null ? Number(districtFilter.value) : NaN;
   const distName = districtOptions.value.find((d) => Number(d.id) === did)?.name || "";
   if (!list.length) {
     chart.setOption(
       {
         title: {
-          text: `${distName} — 暂无单位培训时长数据`,
+          text: `${distName} — 暂无类型培训时长数据`,
           left: "center",
-          subtext: "该区县单位暂无参训记录，或时长均为 0",
+          subtext: "该区县暂无参训记录，或时长均为 0",
           textStyle: { fontSize: 16 },
         },
         tooltip: { trigger: "item" },
@@ -422,7 +429,7 @@ function renderOrgPie() {
   chart.setOption(
     {
       title: {
-        text: `${distName} — 各单位培训时长占比`,
+        text: `${distName} — 各类型培训时长占比`,
         left: "center",
         textStyle: { fontSize: 16 },
       },
@@ -435,7 +442,7 @@ function renderOrgPie() {
         {
           type: "pie",
           radius: ["38%", "65%"],
-          data: list.map((o) => ({ name: o.organization_name, value: o.total_minutes })),
+          data: list.map((o) => ({ name: o.org_type_name, value: o.total_minutes })),
           emphasis: {
             itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: "rgba(0,0,0,0.2)" },
           },

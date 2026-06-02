@@ -51,6 +51,9 @@ Page({
   goAdminTraining() {
     wx.navigateTo({ url: "/pages/admin/index" });
   },
+  goAdminStats() {
+    wx.navigateTo({ url: "/pages/admin/stats" });
+  },
   logout() {
     const app = getApp();
     app.setToken("");

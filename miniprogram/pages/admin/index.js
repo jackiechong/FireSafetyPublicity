@@ -1,5 +1,18 @@
 const { request } = require("../../utils/request");
 const cfg = require("../../utils/config");
+const ORG_TYPE_LABELS = {
+  emergency: "应急",
+  education: "教育",
+  civil_affairs: "民政",
+  culture_tourism: "文旅",
+  health: "卫建",
+  commerce: "商务",
+  industry_agriculture: "工农业农村",
+  development_reform: "发改",
+  other_department: "其他部门",
+  department: "其他部门",
+  enterprise: "其他部门",
+};
 
 function resolveQrUrl(payload) {
   if (!payload) return "";
@@ -77,7 +90,7 @@ Page({
       url: `/api/mp/admin/organizations?district_id=${districtId}&q=`,
     });
     const labels = (list || []).map(
-      (o) => `${o.name}（${o.org_type === "department" ? "行业部门" : "企业"}）`
+      (o) => `${o.name}（${ORG_TYPE_LABELS[o.org_type] || "其他部门"}）`
     );
     this.setData({
       orgList: list || [],
@@ -204,4 +217,8 @@ Page({
   },
 
   noop() {},
+
+  goStats() {
+    wx.navigateTo({ url: "/pages/admin/stats" });
+  },
 });

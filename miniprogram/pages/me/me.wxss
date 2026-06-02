@@ -24,6 +24,19 @@
   font-weight: 600;
   color: #1a237e;
 }
+.stats-module {
+  margin-top: 12rpx;
+}
+.stats-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1a237e;
+}
+.stats-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #666;
+}
 .item .t {
   font-weight: 600;
   margin-bottom: 8rpx;

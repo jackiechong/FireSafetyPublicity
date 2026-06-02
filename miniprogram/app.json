@@ -5,7 +5,8 @@
     "pages/bind/bind",
     "pages/me/me",
     "pages/admin/bind",
-    "pages/admin/index"
+    "pages/admin/index",
+    "pages/admin/stats"
   ],
   "window": {
     "navigationBarTitleText": "葫芦岛消防培训",

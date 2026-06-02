@@ -16,7 +16,7 @@
       <select v-model="orgChoice" :disabled="!districtId">
         <option value="">请选择单位</option>
         <option v-for="o in orgs" :key="o.id" :value="String(o.id)">
-          {{ o.name }}（{{ o.org_type === "department" ? "行业部门" : "企业" }}）
+          {{ o.name }}（{{ orgTypeName(o.org_type) }}）
         </option>
         <option value="__OTHER__">其他单位（手动添加）</option>
       </select>
@@ -30,8 +30,7 @@
       <div class="h5-field">
         <label>类型</label>
         <select v-model="customOrgType">
-          <option value="enterprise">企业</option>
-          <option value="department">行业部门</option>
+          <option v-for="t in orgTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
         </select>
       </div>
     </div>
@@ -75,7 +74,22 @@ const orgs = ref([]);
 const districtId = ref(0);
 const orgChoice = ref(""); // 单位 id 字符串 or "__OTHER__"
 const customOrgName = ref("");
-const customOrgType = ref("enterprise");
+const customOrgType = ref("other_department");
+const orgTypes = [
+  { value: "emergency", label: "应急" },
+  { value: "education", label: "教育" },
+  { value: "civil_affairs", label: "民政" },
+  { value: "culture_tourism", label: "文旅" },
+  { value: "health", label: "卫建" },
+  { value: "commerce", label: "商务" },
+  { value: "industry_agriculture", label: "工农业农村" },
+  { value: "development_reform", label: "发改" },
+  { value: "other_department", label: "其他部门" },
+];
+
+function orgTypeName(value) {
+  return orgTypes.find((t) => t.value === value)?.label || "其他部门";
+}
 
 const name = ref("");
 const phone = ref("");

@@ -17,8 +17,17 @@ from app.database import Base
 
 
 class OrgType(str, enum.Enum):
-    department = "department"  # 行业部门
-    enterprise = "enterprise"  # 企业
+    emergency = "emergency"  # 应急
+    education = "education"  # 教育
+    civil_affairs = "civil_affairs"  # 民政
+    culture_tourism = "culture_tourism"  # 文旅
+    health = "health"  # 卫建
+    commerce = "commerce"  # 商务
+    industry_agriculture = "industry_agriculture"  # 工农业农村
+    development_reform = "development_reform"  # 发改
+    other_department = "other_department"  # 其他部门
+    department = "department"  # 旧数据兼容：行业部门
+    enterprise = "enterprise"  # 旧数据兼容：企业
 
 
 class AdminRole(str, enum.Enum):

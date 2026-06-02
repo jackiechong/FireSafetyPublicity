@@ -42,6 +42,7 @@ from app.schemas import (
     StatsOrgInDistrictItem,
     StatsPersonItem,
     StatsSearchItem,
+    StatsTypeInDistrictItem,
     SuggestItem,
     Token,
     TrainingSessionCreate,
@@ -53,6 +54,20 @@ from app.security import create_access_token, hash_password, verify_password
 from app.training_activity import deactivate_expired_sessions, end_of_local_day_utc
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+ORG_TYPE_LABELS = {
+    OrgType.emergency: "应急",
+    OrgType.education: "教育",
+    OrgType.civil_affairs: "民政",
+    OrgType.culture_tourism: "文旅",
+    OrgType.health: "卫建",
+    OrgType.commerce: "商务",
+    OrgType.industry_agriculture: "工农业农村",
+    OrgType.development_reform: "发改",
+    OrgType.other_department: "其他部门",
+    OrgType.department: "其他部门",
+    OrgType.enterprise: "其他部门",
+}
 
 
 @router.post("/login", response_model=Token)
@@ -533,6 +548,59 @@ def stats_orgs_by_district(
     ]
 
 
+@router.get("/stats/types-by-district", response_model=List[StatsTypeInDistrictItem])
+def stats_types_by_district(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    district_id: int = Query(..., description="区县 ID"),
+):
+    """某区县内按单位类型汇总培训时长、人数和单位数量。"""
+    bid = brigade_filter_brigade_id(admin)
+    q_orgs = db.query(Organization).filter(Organization.district_id == district_id)
+    if bid is not None:
+        q_orgs = q_orgs.filter(Organization.brigade_id == bid)
+    orgs = q_orgs.all()
+    org_type_by_id = {o.id: o.org_type for o in orgs}
+    counts: dict[str, int] = {}
+    for o in orgs:
+        label = ORG_TYPE_LABELS.get(o.org_type, "其他部门")
+        counts[label] = counts.get(label, 0) + 1
+
+    q = (
+        db.query(
+            TrainingSession.organization_id,
+            func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0),
+            func.count(func.distinct(TrainingAttendance.person_id)),
+        )
+        .select_from(TrainingSession)
+        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
+        .filter(TrainingSession.organization_id.in_(list(org_type_by_id.keys()) or [-1]))
+        .group_by(TrainingSession.organization_id)
+    )
+    rows = q.all()
+    totals: dict[str, dict[str, int]] = {
+        label: {"total_minutes": 0, "person_count": 0, "organization_count": count}
+        for label, count in counts.items()
+    }
+    for oid, minutes, persons in rows:
+        label = ORG_TYPE_LABELS.get(org_type_by_id.get(oid), "其他部门")
+        if label not in totals:
+            totals[label] = {"total_minutes": 0, "person_count": 0, "organization_count": 0}
+        totals[label]["total_minutes"] += int(minutes or 0)
+        totals[label]["person_count"] += int(persons or 0)
+
+    return [
+        StatsTypeInDistrictItem(
+            org_type=k,
+            org_type_name=k,
+            total_minutes=v["total_minutes"],
+            person_count=v["person_count"],
+            organization_count=v["organization_count"],
+        )
+        for k, v in sorted(totals.items(), key=lambda item: item[0])
+    ]
+
+
 @router.get("/stats/search-suggest", response_model=List[StatsSearchItem])
 def stats_search_suggest(
     admin: Annotated[AdminUser, Depends(get_current_admin)],
@@ -551,7 +619,7 @@ def stats_search_suggest(
     for o in oq.all():
         d = db.get(District, o.district_id)
         dname = d.name if d else ""
-        ot = "企业" if o.org_type == OrgType.enterprise else "行业部门"
+        ot = ORG_TYPE_LABELS.get(o.org_type, "其他部门")
         out.append(
             StatsSearchItem(
                 kind="organization",

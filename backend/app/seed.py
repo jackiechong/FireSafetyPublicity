@@ -65,17 +65,17 @@ DISTRICT_DEFAULT_BRIGADE: dict[str, str] = {
 }
 
 DEMO_ORG_SPECS: list[tuple[str, OrgType, str, str]] = [
-    ("【测试】连山商业综合体", OrgType.enterprise, "LS", "连山区"),
-    ("【测试】连山区某中学", OrgType.department, "LS", "连山区"),
-    ("【测试】龙港石化储运", OrgType.enterprise, "LG", "龙港区"),
-    ("【测试】龙港区卫健局", OrgType.department, "LG", "龙港区"),
-    ("【测试】绥中某酒店", OrgType.enterprise, "SZ", "绥中县"),
-    ("【测试】兴城古城景区", OrgType.enterprise, "XC", "兴城市"),
-    ("【测试】建昌县工业园区", OrgType.enterprise, "JC", "建昌县"),
-    ("【测试】南票区演示单位", OrgType.enterprise, "NP", "南票区"),
-    ("【测试】杨家杖子经区演示单位", OrgType.enterprise, "YJJKQ", "杨家杖子经济开发区"),
-    ("【测试】经济开发区演示单位", OrgType.enterprise, "JJKFQ", "经济开发区"),
-    ("【测试】高新技术开发区演示单位", OrgType.enterprise, "GXJSQ", "高新技术开发区"),
+    ("【测试】连山商业综合体", OrgType.commerce, "LS", "连山区"),
+    ("【测试】连山区某中学", OrgType.education, "LS", "连山区"),
+    ("【测试】龙港石化储运", OrgType.emergency, "LG", "龙港区"),
+    ("【测试】龙港区卫健局", OrgType.health, "LG", "龙港区"),
+    ("【测试】绥中某酒店", OrgType.culture_tourism, "SZ", "绥中县"),
+    ("【测试】兴城古城景区", OrgType.culture_tourism, "XC", "兴城市"),
+    ("【测试】建昌县工业园区", OrgType.industry_agriculture, "JC", "建昌县"),
+    ("【测试】南票区演示单位", OrgType.other_department, "NP", "南票区"),
+    ("【测试】杨家杖子经区演示单位", OrgType.development_reform, "YJJKQ", "杨家杖子经济开发区"),
+    ("【测试】经济开发区演示单位", OrgType.commerce, "JJKFQ", "经济开发区"),
+    ("【测试】高新技术开发区演示单位", OrgType.emergency, "GXJSQ", "高新技术开发区"),
 ]
 
 
@@ -141,6 +141,7 @@ def seed():
         _ensure_brigades(db)
         _retire_removed_brigades(db)
         _ensure_other_organizations(db)
+        _reclassify_demo_org_types(db)
 
         if db.query(AdminUser).count() == 0:
             det = AdminUser(
@@ -191,13 +192,45 @@ def _ensure_other_organizations(db: Session) -> None:
         db.add(
             Organization(
                 name="其他",
-                org_type=OrgType.enterprise,
+                org_type=OrgType.other_department,
                 brigade_id=brigade.id,
                 district_id=district.id,
                 remark="SYSTEM_OTHER",
             )
         )
         changed = True
+    if changed:
+        db.commit()
+
+
+def _reclassify_demo_org_types(db: Session) -> None:
+    """将已有演示/fake 单位迁移到新的部门类型体系。"""
+    changed = False
+    by_name = {name: org_type for name, org_type, _, _ in DEMO_ORG_SPECS}
+    for org in db.query(Organization).all():
+        target = by_name.get(org.name)
+        if not target:
+            if org.remark == "SYSTEM_OTHER":
+                target = OrgType.other_department
+            elif org.remark == FAKE_JIANCHANG_BULK:
+                # 建昌批量 fake 数据按序轮换，便于类型占比图有分布。
+                types = [
+                    OrgType.emergency,
+                    OrgType.education,
+                    OrgType.civil_affairs,
+                    OrgType.culture_tourism,
+                    OrgType.health,
+                    OrgType.commerce,
+                    OrgType.industry_agriculture,
+                    OrgType.development_reform,
+                    OrgType.other_department,
+                ]
+                target = types[org.id % len(types)]
+            elif org.org_type in (OrgType.enterprise, OrgType.department):
+                target = OrgType.other_department
+        if target and org.org_type != target:
+            org.org_type = target
+            changed = True
     if changed:
         db.commit()
 
@@ -267,7 +300,7 @@ def _ensure_fake_padding_for_zero_districts(db: Session) -> None:
         if not org:
             org = Organization(
                 name=f"【测试】{d.name}演示单位",
-                org_type=OrgType.enterprise,
+                org_type=OrgType.other_department,
                 brigade_id=b.id,
                 district_id=d.id,
                 contact_name="演示",
@@ -448,7 +481,17 @@ def _seed_jianchang_fake_bulk(db: Session) -> None:
         label = org_labels[i % len(org_labels)]
         org = Organization(
             name=f"【建昌模拟】{label}{i + 1:02d}号",
-            org_type=random.choice([OrgType.enterprise, OrgType.department]),
+            org_type=random.choice([
+                OrgType.emergency,
+                OrgType.education,
+                OrgType.civil_affairs,
+                OrgType.culture_tourism,
+                OrgType.health,
+                OrgType.commerce,
+                OrgType.industry_agriculture,
+                OrgType.development_reform,
+                OrgType.other_department,
+            ]),
             brigade_id=brigade.id,
             district_id=district.id,
             contact_name=f"联系人{i + 1}",

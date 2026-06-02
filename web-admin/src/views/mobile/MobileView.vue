@@ -24,14 +24,14 @@
       <el-select
         v-model="districtId"
         clearable
-        placeholder="选择区县看区内单位"
+        placeholder="选择区县看类型占比"
         class="m-select"
         @change="onDistrictChange"
       >
         <el-option v-for="d in districts" :key="d.id" :label="d.name" :value="d.id" />
       </el-select>
       <el-select
-        v-if="districtId"
+        v-if="false"
         v-model="orgId"
         clearable
         filterable
@@ -50,7 +50,7 @@
     </section>
 
     <section v-if="districtId" class="m-block">
-      <div class="m-block-title">县区内单位时长占比</div>
+      <div class="m-block-title">县区内类型时长占比</div>
       <div ref="pieRef" class="m-chart m-chart-sm" />
     </section>
 
@@ -85,6 +85,7 @@ const districts = ref([]);
 const districtStats = ref([]);
 const districtId = ref();
 const orgs = ref([]);
+const typeStats = ref([]);
 const orgId = ref();
 const persons = ref([]);
 const personLoading = ref(false);
@@ -96,7 +97,7 @@ let pieChart;
 
 const totalMinutes = computed(() => {
   if (districtId.value) {
-    return orgs.value.reduce((s, o) => s + o.total_minutes, 0);
+    return typeStats.value.reduce((s, o) => s + o.total_minutes, 0);
   }
   return districtStats.value.reduce((s, d) => s + d.total_minutes, 0);
 });
@@ -165,7 +166,7 @@ function renderBar() {
 
 function renderPie() {
   if (!pieRef.value) return;
-  const list = orgs.value.filter((o) => o.total_minutes > 0);
+  const list = typeStats.value.filter((o) => o.total_minutes > 0);
   if (!pieChart) pieChart = echarts.init(pieRef.value);
   if (!list.length) {
     pieChart.setOption({ series: [{ type: "pie", radius: ["40%", "68%"], data: [] }], title: { text: "暂无时长数据", left: "center", top: "middle", textStyle: { fontSize: 14, color: "#999" } } });
@@ -174,7 +175,7 @@ function renderPie() {
   const did = districtId.value != null ? Number(districtId.value) : NaN;
   const distName = districts.value.find((d) => Number(d.id) === did)?.name || "";
   pieChart.setOption({
-    title: { text: `${distName} 单位占比`, left: "center", top: 0, textStyle: { fontSize: 14 } },
+    title: { text: `${distName} 类型占比`, left: "center", top: 0, textStyle: { fontSize: 14 } },
     tooltip: {
       trigger: "item",
       formatter: (p) => `${p.name}<br/>${formatTrainingMinutes(p.value)} (${p.percent}%)`,
@@ -184,7 +185,7 @@ function renderPie() {
         type: "pie",
         radius: ["38%", "62%"],
         center: ["50%", "55%"],
-        data: list.map((o) => ({ name: o.organization_name, value: o.total_minutes })),
+        data: list.map((o) => ({ name: o.org_type_name, value: o.total_minutes })),
       },
     ],
   });
@@ -194,6 +195,7 @@ async function onDistrictChange() {
   orgId.value = undefined;
   persons.value = [];
   orgs.value = [];
+  typeStats.value = [];
   await nextTick();
   pieChart?.dispose();
   pieChart = null;
@@ -207,15 +209,10 @@ async function onDistrictChange() {
     const { data: orgList } = await http.get("/api/admin/organizations", {
       params: { district_id: did },
     });
-    let statsMap = new Map();
-    try {
-      const { data: statsList } = await http.get("/api/admin/stats/orgs-by-district", {
-        params: { district_id: did },
-      });
-      statsMap = new Map((statsList || []).map((x) => [x.organization_id, x]));
-    } catch (statsErr) {
-      console.warn("orgs-by-district stats failed, showing orgs with zero stats", statsErr);
-    }
+    const { data: statsList } = await http.get("/api/admin/stats/orgs-by-district", {
+      params: { district_id: did },
+    });
+    const statsMap = new Map((statsList || []).map((x) => [x.organization_id, x]));
     orgs.value = (orgList || []).map((o) => {
       const s = statsMap.get(o.id);
       return {
@@ -225,9 +222,14 @@ async function onDistrictChange() {
         person_count: s?.person_count ?? 0,
       };
     });
+    const { data: types } = await http.get("/api/admin/stats/types-by-district", {
+      params: { district_id: did },
+    });
+    typeStats.value = types || [];
   } catch (e) {
     console.error(e);
     orgs.value = [];
+    typeStats.value = [];
   }
   await nextTick();
   renderPie();

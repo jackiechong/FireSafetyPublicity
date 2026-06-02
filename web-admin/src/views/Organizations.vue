@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <h2>行业部门 / 企业</h2>
+    <h2>单位录入</h2>
     <el-form :inline="true" class="toolbar">
       <el-form-item label="关键词">
         <el-input v-model="keyword" placeholder="名称检索" clearable style="width: 200px" @keyup.enter="load" />
@@ -21,7 +21,7 @@
       <el-table-column prop="name" label="名称" min-width="180" />
       <el-table-column label="类型" width="100">
         <template #default="{ row }">
-          {{ row.org_type === "department" ? "行业部门" : "企业" }}
+          {{ orgTypeName(row.org_type) }}
         </template>
       </el-table-column>
       <el-table-column label="大队" width="120">
@@ -46,10 +46,9 @@
           <el-input v-model="form.name" />
         </el-form-item>
         <el-form-item label="类型" required>
-          <el-radio-group v-model="form.org_type">
-            <el-radio value="department">行业部门</el-radio>
-            <el-radio value="enterprise">企业</el-radio>
-          </el-radio-group>
+          <el-select v-model="form.org_type" style="width: 100%">
+            <el-option v-for="t in orgTypes" :key="t.value" :label="t.label" :value="t.value" />
+          </el-select>
         </el-form-item>
         <el-form-item label="所属大队" required>
           <el-select v-model="form.brigade_id" style="width: 100%">
@@ -93,10 +92,21 @@ const keyword = ref("");
 const filterDistrict = ref();
 const dialogVisible = ref(false);
 const editing = ref(null);
+const orgTypes = [
+  { value: "emergency", label: "应急" },
+  { value: "education", label: "教育" },
+  { value: "civil_affairs", label: "民政" },
+  { value: "culture_tourism", label: "文旅" },
+  { value: "health", label: "卫建" },
+  { value: "commerce", label: "商务" },
+  { value: "industry_agriculture", label: "工农业农村" },
+  { value: "development_reform", label: "发改" },
+  { value: "other_department", label: "其他部门" },
+];
 
 const form = reactive({
   name: "",
-  org_type: "enterprise",
+  org_type: "other_department",
   brigade_id: null,
   district_id: null,
   contact_name: "",
@@ -109,6 +119,9 @@ function brigadeName(id) {
 }
 function districtName(id) {
   return districts.value.find((d) => d.id === id)?.name || id;
+}
+function orgTypeName(value) {
+  return orgTypes.find((t) => t.value === value)?.label || "其他部门";
 }
 
 async function loadMeta() {
@@ -147,7 +160,7 @@ function openDialog(row) {
   } else {
     Object.assign(form, {
       name: "",
-      org_type: "enterprise",
+      org_type: "other_department",
       brigade_id: brigades.value[0]?.id ?? null,
       district_id: districts.value[0]?.id ?? null,
       contact_name: "",

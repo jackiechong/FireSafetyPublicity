@@ -2,6 +2,7 @@
   <view class="card" wx:if="{{adminInfo}}">
     <view class="admin-line">管理员：{{adminInfo.admin_username}}</view>
     <view class="admin-sub">{{adminInfo.admin_role === 'detachment' ? '支队（全市）' : '大队'}} · {{adminInfo.admin_brigade_name || '—'}}</view>
+    <button class="stats-entry" bindtap="goStats">数据回看</button>
   </view>
 
   <view class="card">

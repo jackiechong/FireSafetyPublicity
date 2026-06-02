@@ -15,9 +15,20 @@ Page({
     selectedOrg: null, // {id, name, org_type} 或 null
     showCustomOrg: false,
     customOrgName: "",
-    customOrgType: "enterprise", // department | enterprise
+    customOrgType: "other_department",
     customOrgTypeIndex: 0,
-    customOrgTypeOptions: ["企业", "行业部门"],
+    customOrgTypeOptions: ["应急", "教育", "民政", "文旅", "卫建", "商务", "工农业农村", "发改", "其他部门"],
+    customOrgTypeValues: [
+      "emergency",
+      "education",
+      "civil_affairs",
+      "culture_tourism",
+      "health",
+      "commerce",
+      "industry_agriculture",
+      "development_reform",
+      "other_department",
+    ],
 
     name: "",
     phone: "",
@@ -61,7 +72,7 @@ Page({
         url: `/api/mp/organizations?district_id=${districtId}&q=`,
       });
       const labels = (list || []).map(
-        (o) => `${o.name}（${o.org_type === "department" ? "行业部门" : "企业"}）`
+        (o) => `${o.name}（${this.orgTypeName(o.org_type)}）`
       );
       labels.push("其他单位（手动添加）");
       this.setData({
@@ -93,7 +104,7 @@ Page({
     if (isOther) {
       this.setData({
         orgIndex: idx,
-        selectedOrg: { id: OTHER_ORG_FLAG, name: "其他单位（手动添加）", org_type: "enterprise" },
+        selectedOrg: { id: OTHER_ORG_FLAG, name: "其他单位（手动添加）", org_type: "other_department" },
         showCustomOrg: true,
       });
     } else {
@@ -115,8 +126,13 @@ Page({
     const idx = Number(e.detail.value);
     this.setData({
       customOrgTypeIndex: idx,
-      customOrgType: idx === 1 ? "department" : "enterprise",
+      customOrgType: this.data.customOrgTypeValues[idx] || "other_department",
     });
+  },
+
+  orgTypeName(value) {
+    const idx = this.data.customOrgTypeValues.indexOf(value);
+    return idx >= 0 ? this.data.customOrgTypeOptions[idx] : "其他部门";
   },
 
   onName(e) {
