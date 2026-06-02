@@ -22,7 +22,7 @@ from app.schemas import (
     MpTrainingItem,
 )
 from app.security import create_access_token
-from app.training_activity import deactivate_expired_sessions, effective_end_utc, session_allows_checkin
+from app.training_activity import deactivate_expired_sessions, effective_end_utc, session_allows_checkin, today_bounds_utc
 from app.wechat import code_to_session
 
 router = APIRouter(prefix="/api/mp", tags=["miniprogram"])
@@ -221,15 +221,19 @@ def mp_active_trainings(
     person: Annotated[Person, Depends(get_current_person_token)],
     db: Session = Depends(get_db),
 ):
-    """当前可扫码签到的活动场次（未超时）；本区县主办单位优先排在前面。"""
+    """今天全市正在进行且未手动结束的活动场次。"""
     _require_complete_profile(person)
     deactivate_expired_sessions(db)
     now = datetime.utcnow()
+    day_start, day_end = today_bounds_utc(now)
     rows = (
         db.query(TrainingSession, Organization, District)
         .join(Organization, Organization.id == TrainingSession.organization_id)
         .join(District, District.id == Organization.district_id)
         .filter(TrainingSession.is_active.is_(True))
+        .filter(TrainingSession.start_at >= day_start)
+        .filter(TrainingSession.start_at < day_end)
+        .filter(TrainingSession.start_at <= now)
         .order_by(TrainingSession.start_at.desc())
         .limit(300)
         .all()
@@ -245,6 +249,7 @@ def mp_active_trainings(
                 title=sess.title,
                 start_at=sess.start_at,
                 duration_minutes=int(sess.duration_minutes or 0),
+                location=sess.location,
                 organization_name=org.name,
                 district_name=dist.name,
                 district_id=dist.id,

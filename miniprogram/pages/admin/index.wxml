@@ -42,7 +42,10 @@
   <block wx:for="{{trainings}}" wx:key="id">
     <view class="card item" data-id="{{item.id}}" bindtap="onShowQr">
       <view class="t">{{item.title}}</view>
-      <view class="meta">{{item.start_at}} · {{item.duration_minutes}} 分钟</view>
+      <view class="meta">{{item.start_at}} · {{item.duration_minutes}} 分钟 · {{item.is_active ? '进行中' : '已结束'}}</view>
+      <button wx:if="{{item.is_active}}" size="mini" class="end-btn" data-id="{{item.id}}" catchtap="onEndTraining">
+        提前结束
+      </button>
     </view>
   </block>
 

@@ -70,6 +70,7 @@ Page({
         adminBrigadeName: res.admin_brigade_name || "",
       });
       wx.showToast({ title: "绑定成功", icon: "success" });
+      setTimeout(() => wx.redirectTo({ url: "/pages/admin/index" }), 500);
     } catch (e) {
       const nextFailCount = this.data.failCount + 1;
       const locked = nextFailCount >= 5;

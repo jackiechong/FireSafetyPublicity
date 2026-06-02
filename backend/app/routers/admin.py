@@ -50,7 +50,7 @@ from app.schemas import (
 )
 from app.config import settings
 from app.security import create_access_token, hash_password, verify_password
-from app.training_activity import deactivate_expired_sessions
+from app.training_activity import deactivate_expired_sessions, end_of_local_day_utc
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -227,7 +227,7 @@ def create_training(
         raise HTTPException(400, "单位与大队不匹配")
     data = body.model_dump()
     if data.get("end_at") is None and data.get("start_at") is not None:
-        data["end_at"] = data["start_at"] + timedelta(minutes=int(data.get("duration_minutes") or 0))
+        data["end_at"] = end_of_local_day_utc(data["start_at"])
     t = TrainingSession(**data)
     db.add(t)
     db.commit()
@@ -253,6 +253,8 @@ def patch_training(
         return sess
     if "is_active" in data:
         sess.is_active = bool(data["is_active"])
+        if not sess.is_active:
+            sess.end_at = datetime.utcnow()
     db.commit()
     db.refresh(sess)
     return sess
@@ -307,7 +309,7 @@ def create_training_quick(
         brigade_id=org.brigade_id,
         organization_id=org.id,
         start_at=start,
-        end_at=start + timedelta(minutes=body.duration_minutes),
+        end_at=end_of_local_day_utc(start),
         duration_minutes=body.duration_minutes,
         location=(body.location or "").strip() or None,
         remark=None,

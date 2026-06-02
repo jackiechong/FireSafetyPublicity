@@ -160,6 +160,29 @@ Page({
     }
   },
 
+  async onEndTraining(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    wx.showModal({
+      title: "提前结束",
+      content: "结束后学员将不能再加入本场培训，确定继续吗？",
+      success: async (res) => {
+        if (!res.confirm) return;
+        try {
+          await request({
+            url: `/api/mp/admin/trainings/${id}`,
+            method: "PATCH",
+            data: { is_active: false },
+          });
+          wx.showToast({ title: "已结束", icon: "success" });
+          await this.loadTrainings();
+        } catch (err) {
+          wx.showToast({ title: err.message || "操作失败", icon: "none" });
+        }
+      },
+    });
+  },
+
   showQrData(data) {
     this.setData({
       qrInfo: data,

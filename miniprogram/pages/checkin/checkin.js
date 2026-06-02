@@ -16,17 +16,15 @@ Page({
     loading: false,
     result: null,
     error: "",
+    activeList: [],
+    selectedSessionId: 0,
   },
   async onLoad(options) {
     const sessionId = getSessionId(options);
-    this.setData({ sessionId });
-    if (!sessionId) {
-      this.setData({ error: "签到码无效，请重新扫码" });
-      return;
-    }
-    await this.ensureLoginAndCheckin();
+    this.setData({ sessionId, selectedSessionId: sessionId || 0 });
+    await this.ensureLoginAndLoad();
   },
-  async ensureLoginAndCheckin() {
+  async ensureLoginAndLoad() {
     const app = getApp();
     if (!app.globalData.token) {
       try {
@@ -40,7 +38,8 @@ Page({
         });
         app.setToken(res.token);
         if (res.need_profile) {
-          wx.redirectTo({ url: `/pages/bind/bind?session_id=${this.data.sessionId}` });
+          const q = this.data.sessionId ? `?session_id=${this.data.sessionId}` : "";
+          wx.redirectTo({ url: `/pages/bind/bind${q}` });
           return;
         }
       } catch (e) {
@@ -48,15 +47,47 @@ Page({
         return;
       }
     }
-    await this.submitCheckin();
+    await this.loadActiveTrainings();
+  },
+  async loadActiveTrainings() {
+    this.setData({ loading: true, error: "", result: null });
+    try {
+      const list = await request({ url: "/api/mp/active-trainings" });
+      const activeList = (list || []).map((t) => ({
+        ...t,
+        start_at: (t.start_at || "").replace("T", " ").slice(0, 16),
+      }));
+      const exists = activeList.some((t) => Number(t.session_id) === Number(this.data.selectedSessionId));
+      this.setData({
+        activeList,
+        selectedSessionId: exists ? this.data.selectedSessionId : activeList.length === 1 ? activeList[0].session_id : 0,
+        error: activeList.length ? "" : "今天暂无正在进行的培训场次",
+      });
+    } catch (e) {
+      if (String(e.message || "").includes("完成单位")) {
+        const q = this.data.sessionId ? `?session_id=${this.data.sessionId}` : "";
+        wx.redirectTo({ url: `/pages/bind/bind${q}` });
+        return;
+      }
+      this.setData({ error: e.message || "加载培训场次失败" });
+    } finally {
+      this.setData({ loading: false });
+    }
+  },
+  onPickTraining(e) {
+    this.setData({ selectedSessionId: Number(e.currentTarget.dataset.id) || 0 });
   },
   async submitCheckin() {
+    if (!this.data.selectedSessionId) {
+      wx.showToast({ title: "请选择培训场次", icon: "none" });
+      return;
+    }
     this.setData({ loading: true, error: "" });
     try {
       const result = await request({
         url: "/api/mp/checkin",
         method: "POST",
-        data: { session_id: this.data.sessionId },
+        data: { session_id: this.data.selectedSessionId },
       });
       result.start_at = (result.start_at || "").replace("T", " ").slice(0, 16);
       this.setData({ result });

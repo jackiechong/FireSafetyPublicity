@@ -260,6 +260,7 @@ class MpActiveTrainingItem(BaseModel):
     title: str
     start_at: datetime
     duration_minutes: int
+    location: Optional[str] = None
     organization_name: str
     district_name: str
     district_id: int

@@ -48,3 +48,26 @@
 .btn-primary {
   margin-top: 40rpx;
 }
+.training-item {
+  margin-top: 24rpx;
+  padding: 24rpx;
+  border: 1rpx solid #e0e0e0;
+  border-radius: 12rpx;
+  background: #fff;
+}
+.training-item.selected {
+  border-color: #3949ab;
+  background: #f5f7ff;
+}
+.training-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #222;
+  line-height: 1.4;
+  margin-bottom: 10rpx;
+}
+.training-meta {
+  color: #666;
+  font-size: 24rpx;
+  line-height: 1.6;
+}

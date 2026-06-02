@@ -19,6 +19,7 @@ from app.schemas import (
     MpWxBindOut,
     QuickTrainingCreate,
     QuickTrainingOut,
+    TrainingSessionPatch,
     TrainingSessionOut,
 )
 from app.training_activity import deactivate_expired_sessions
@@ -173,3 +174,25 @@ def mp_admin_training_qrcode(
     if admin.role == AdminRole.brigade and sess.brigade_id != admin.brigade_id:
         raise HTTPException(403, "无权访问该培训")
     return _build_quick_training_out(sess, db)
+
+
+@router.patch("/trainings/{session_id}", response_model=TrainingSessionOut)
+def mp_admin_patch_training(
+    session_id: int,
+    body: TrainingSessionPatch,
+    admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
+    db: Session = Depends(get_db),
+):
+    sess = db.get(TrainingSession, session_id)
+    if not sess:
+        raise HTTPException(404, "培训不存在")
+    if admin.role == AdminRole.brigade and sess.brigade_id != admin.brigade_id:
+        raise HTTPException(403, "无权操作该培训")
+    data = body.model_dump(exclude_unset=True)
+    if "is_active" in data:
+        sess.is_active = bool(data["is_active"])
+        if not sess.is_active:
+            sess.end_at = datetime.utcnow()
+    db.commit()
+    db.refresh(sess)
+    return sess

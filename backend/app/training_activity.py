@@ -1,17 +1,40 @@
 """培训场次活动状态：有效结束时间、到期自动关闭扫码签到。"""
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
 from app.models import TrainingSession
 
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _local_day_bounds_utc(moment: datetime) -> tuple[datetime, datetime]:
+    """给定 UTC/naive UTC 时间，返回其北京时间当天 [00:00, 次日 00:00) 对应的 naive UTC 边界。"""
+    aware = moment.replace(tzinfo=timezone.utc) if moment.tzinfo is None else moment.astimezone(timezone.utc)
+    local_dt = aware.astimezone(LOCAL_TZ)
+    local_start = datetime.combine(local_dt.date(), time.min, tzinfo=LOCAL_TZ)
+    local_end = local_start + timedelta(days=1)
+    return (
+        local_start.astimezone(timezone.utc).replace(tzinfo=None),
+        local_end.astimezone(timezone.utc).replace(tzinfo=None),
+    )
+
+
+def today_bounds_utc(now: datetime | None = None) -> tuple[datetime, datetime]:
+    return _local_day_bounds_utc(now or datetime.utcnow())
+
+
+def end_of_local_day_utc(moment: datetime) -> datetime:
+    return _local_day_bounds_utc(moment)[1]
+
 
 def effective_end_utc(sess: TrainingSession) -> datetime:
-    """培训结束时刻：显式 end_at 优先，否则按开始时间 + 计划时长。"""
+    """培训结束时刻：显式 end_at 优先，否则按开始时间所在北京时间当天 24:00。"""
     if sess.end_at is not None:
         return sess.end_at
-    return sess.start_at + timedelta(minutes=int(sess.duration_minutes or 0))
+    return end_of_local_day_utc(sess.start_at)
 
 
 def deactivate_expired_sessions(db: Session) -> int:

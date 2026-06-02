@@ -10,7 +10,7 @@
 
   <view class="section-row">
     <view class="section-title">培训记录</view>
-    <view class="identity-bind" bindtap="goAdminEntry">身份绑定</view>
+    <view class="identity-bind" bindtap="goAdminEntry">{{person.is_admin ? '培训管理' : '身份绑定'}}</view>
   </view>
   <block wx:if="{{list.length === 0}}">
     <view class="empty">暂无记录（需管理端将您加入培训名单）</view>
