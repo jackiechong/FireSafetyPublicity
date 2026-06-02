@@ -293,6 +293,16 @@ class StatsPersonItem(BaseModel):
     total_minutes: int
 
 
+class StatsPersonTrainingItem(BaseModel):
+    session_id: int
+    title: str
+    start_at: datetime
+    duration_minutes: int
+    organization_name: str
+    district_name: str
+    location: Optional[str] = None
+
+
 class AdminPersonRebindIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)
     phone: str = Field(..., min_length=11, max_length=11, pattern=r"^1\d{10}$")

@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import brigade_filter_brigade_id, get_current_mp_admin, get_current_person_token
 from app.models import AdminRole, AdminUser, AdminWxBindCode, Brigade, District, Organization, Person
-from app.models import TrainingSession
+from app.models import TrainingAttendance, TrainingSession
 from app.routers.admin import _build_quick_training_out, create_training_quick
-from app.routers.admin import stats_by_district, stats_types_by_district
+from app.routers.admin import stats_by_district, stats_orgs_by_district, stats_persons_by_organization, stats_types_by_district
 from app.schemas import (
     DistrictOut,
     MpAdminMeOut,
@@ -21,6 +21,9 @@ from app.schemas import (
     QuickTrainingCreate,
     QuickTrainingOut,
     StatsDistrictItem,
+    StatsOrgInDistrictItem,
+    StatsPersonItem,
+    StatsPersonTrainingItem,
     StatsTypeInDistrictItem,
     TrainingSessionPatch,
     TrainingSessionOut,
@@ -130,8 +133,10 @@ def mp_admin_districts(
 def mp_admin_stats_by_district(
     admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
     db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
 ):
-    return stats_by_district(admin, db)
+    return stats_by_district(admin, db, start, end)
 
 
 @router.get("/stats/types-by-district", response_model=List[StatsTypeInDistrictItem])
@@ -139,8 +144,72 @@ def mp_admin_stats_types_by_district(
     district_id: int,
     admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
     db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
 ):
-    return stats_types_by_district(admin, db, district_id)
+    return stats_types_by_district(admin, db, district_id, start, end)
+
+
+@router.get("/stats/orgs-by-district", response_model=List[StatsOrgInDistrictItem])
+def mp_admin_stats_orgs_by_district(
+    district_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
+    db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+):
+    return stats_orgs_by_district(admin, db, district_id, start, end)
+
+
+@router.get("/stats/persons-by-organization", response_model=List[StatsPersonItem])
+def mp_admin_stats_persons_by_organization(
+    organization_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
+    db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+):
+    return stats_persons_by_organization(admin, db, organization_id, start, end)
+
+
+@router.get("/stats/person-trainings", response_model=List[StatsPersonTrainingItem])
+def mp_admin_stats_person_trainings(
+    person_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
+    db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+):
+    person = db.get(Person, person_id)
+    if not person:
+        raise HTTPException(404, "人员不存在")
+    q = (
+        db.query(TrainingAttendance, TrainingSession, Organization, District)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .join(Organization, Organization.id == TrainingSession.organization_id)
+        .join(District, District.id == Organization.district_id)
+        .filter(TrainingAttendance.person_id == person_id)
+    )
+    bid = brigade_filter_brigade_id(admin)
+    if bid is not None:
+        q = q.filter(TrainingSession.brigade_id == bid)
+    if start:
+        q = q.filter(TrainingSession.start_at >= start)
+    if end:
+        q = q.filter(TrainingSession.start_at < end)
+    rows = q.order_by(TrainingSession.start_at.desc()).limit(200).all()
+    return [
+        StatsPersonTrainingItem(
+            session_id=s.id,
+            title=s.title,
+            start_at=s.start_at,
+            duration_minutes=int(a.duration_minutes or 0),
+            organization_name=o.name,
+            district_name=d.name,
+            location=s.location,
+        )
+        for a, s, o, d in rows
+    ]
 
 
 @router.get("/organizations", response_model=List[MpOrgListItem])

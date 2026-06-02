@@ -2,6 +2,41 @@
   padding: 24rpx;
   padding-bottom: 48rpx;
 }
+.period-card,
+.card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 4rpx 24rpx rgba(26, 35, 126, 0.06);
+}
+.period-tabs {
+  display: flex;
+  background: #f1f3f8;
+  border-radius: 12rpx;
+  padding: 6rpx;
+  margin-bottom: 18rpx;
+}
+.period-tab {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  border-radius: 10rpx;
+  color: #666;
+  font-size: 26rpx;
+}
+.period-tab.active {
+  background: #1a237e;
+  color: #fff;
+  font-weight: 700;
+}
+.period-picker {
+  border: 1rpx solid #e0e0e0;
+  border-radius: 12rpx;
+  padding: 20rpx;
+  color: #1a237e;
+  font-weight: 600;
+}
 .summary {
   display: flex;
   gap: 16rpx;
@@ -22,12 +57,6 @@
   margin-top: 12rpx;
   font-size: 34rpx;
   font-weight: 700;
-}
-.card {
-  background: #fff;
-  border-radius: 16rpx;
-  padding: 28rpx;
-  margin-bottom: 24rpx;
 }
 .section-title {
   font-size: 30rpx;
@@ -62,44 +91,69 @@
   font-size: 22rpx;
   color: #777;
 }
-.type-row {
-  padding: 18rpx 0;
+.pie-canvas {
+  width: 640rpx;
+  height: 480rpx;
+  max-width: 100%;
+  margin: 0 auto 12rpx;
+}
+.legend-row,
+.list-row,
+.training-row {
+  padding: 20rpx 0;
   border-bottom: 1rpx solid #eee;
 }
-.type-row:last-child {
+.legend-row:last-child,
+.list-row:last-child,
+.training-row:last-child {
   border-bottom: 0;
 }
-.type-head {
+.legend-row {
   display: flex;
   justify-content: space-between;
-  gap: 18rpx;
   align-items: center;
+  gap: 16rpx;
 }
-.type-name {
+.legend-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.legend-dot {
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 50%;
+  margin-right: 12rpx;
+  flex: 0 0 auto;
+}
+.legend-name {
+  font-size: 26rpx;
+  color: #222;
+}
+.legend-meta {
+  font-size: 24rpx;
+  color: #666;
+  white-space: nowrap;
+}
+.list-row.active {
+  margin: 0 -12rpx;
+  padding-left: 12rpx;
+  padding-right: 12rpx;
+  background: #f0f2ff;
+  border-radius: 12rpx;
+  border-bottom-color: transparent;
+}
+.row-title {
   font-size: 28rpx;
   font-weight: 600;
   color: #222;
+  line-height: 1.45;
 }
-.type-num {
+.row-meta {
+  margin-top: 8rpx;
+  color: #777;
   font-size: 24rpx;
-  color: #666;
-}
-.bar {
-  height: 16rpx;
-  border-radius: 999rpx;
-  background: #eef0f7;
-  overflow: hidden;
-  margin-top: 14rpx;
-}
-.bar-fill {
-  height: 100%;
-  border-radius: 999rpx;
-  background: #3949ab;
-}
-.type-foot {
-  margin-top: 10rpx;
-  font-size: 22rpx;
-  color: #888;
+  line-height: 1.45;
 }
 .empty {
   text-align: center;

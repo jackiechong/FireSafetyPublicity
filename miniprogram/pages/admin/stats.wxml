@@ -1,4 +1,15 @@
 <view class="page">
+  <view class="period-card">
+    <view class="period-tabs">
+      <view class="period-tab {{periodMode === 'year' ? 'active' : ''}}" data-mode="year" bindtap="onPeriodMode">年</view>
+      <view class="period-tab {{periodMode === 'month' ? 'active' : ''}}" data-mode="month" bindtap="onPeriodMode">月</view>
+      <view class="period-tab {{periodMode === 'date' ? 'active' : ''}}" data-mode="date" bindtap="onPeriodMode">日</view>
+    </view>
+    <picker mode="date" fields="{{periodFields}}" value="{{periodValue}}" bindchange="onPeriodPick">
+      <view class="period-picker">{{periodLabel}}</view>
+    </picker>
+  </view>
+
   <view class="summary">
     <view class="summary-item">
       <view class="summary-label">培训总时长</view>
@@ -29,19 +40,64 @@
   </view>
 
   <view class="card">
-    <view class="section-title">{{selectedDistrictName}} 类型占比</view>
+    <view class="section-title">{{selectedDistrictName || '县区'}} 行业类型占比</view>
+    <canvas canvas-id="typePie" class="pie-canvas"></canvas>
     <block wx:if="{{typeStats.length}}">
-      <view wx:for="{{typeStats}}" wx:key="org_type" class="type-row">
-        <view class="type-head">
-          <text class="type-name">{{item.org_type_name}}</text>
-          <text class="type-num">{{item.total_minutes_text}} · {{item.person_count}}人</text>
+      <view wx:for="{{typeStats}}" wx:key="org_type" class="legend-row">
+        <view class="legend-main">
+          <view class="legend-dot" style="background: {{item.color}};"></view>
+          <text class="legend-name">{{item.org_type_name}}</text>
         </view>
-        <view class="bar">
-          <view class="bar-fill" style="width: {{item.percent}}%;"></view>
-        </view>
-        <view class="type-foot">{{item.organization_count}} 个单位 · {{item.percent}}%</view>
+        <text class="legend-meta">{{item.total_minutes_text}} · {{item.percent}}%</text>
       </view>
     </block>
     <view wx:else class="empty">暂无类型统计数据</view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">{{selectedDistrictName || '县区'}} 单位培训时长</view>
+    <block wx:if="{{orgRows.length}}">
+      <view
+        wx:for="{{orgRows}}"
+        wx:key="organization_id"
+        class="list-row {{selectedOrgId === item.organization_id ? 'active' : ''}}"
+        data-id="{{item.organization_id}}"
+        bindtap="onPickOrg"
+      >
+        <view class="row-title">{{item.organization_name}}</view>
+        <view class="row-meta">{{item.total_minutes_text}} · {{item.person_count}}人</view>
+      </view>
+    </block>
+    <view wx:else class="empty">暂无单位培训数据</view>
+  </view>
+
+  <view wx:if="{{selectedOrgId}}" class="card">
+    <view class="section-title">{{selectedOrgName}} 人员培训时长</view>
+    <block wx:if="{{personRows.length}}">
+      <view
+        wx:for="{{personRows}}"
+        wx:key="person_id"
+        class="list-row {{selectedPersonId === item.person_id ? 'active' : ''}}"
+        data-id="{{item.person_id}}"
+        bindtap="onPickPerson"
+      >
+        <view class="row-title">{{item.name || '未登记姓名'}}</view>
+        <view class="row-meta">{{item.phone}} · {{item.total_minutes_text}} · {{item.session_count}}场</view>
+      </view>
+    </block>
+    <view wx:else class="empty">暂无人员培训数据</view>
+  </view>
+
+  <view wx:if="{{selectedPersonId}}" class="card">
+    <view class="section-title">{{selectedPersonName}} 参训场次</view>
+    <block wx:if="{{trainingRows.length}}">
+      <view wx:for="{{trainingRows}}" wx:key="session_id" class="training-row">
+        <view class="row-title">{{item.title}}</view>
+        <view class="row-meta">{{item.start_text}} · {{item.duration_text}}</view>
+        <view class="row-meta">{{item.district_name}} · {{item.organization_name}}</view>
+        <view wx:if="{{item.location}}" class="row-meta">地点：{{item.location}}</view>
+      </view>
+    </block>
+    <view wx:else class="empty">暂无参训场次</view>
   </view>
 </view>
