@@ -53,19 +53,6 @@ def resolve_mp_admin(db: Session, person: Person) -> AdminUser | None:
     )
 
 
-def get_current_mp_admin(
-    person: Annotated[Person, Depends(get_current_person_token)],
-    db: Session = Depends(get_db),
-) -> AdminUser:
-    admin = resolve_mp_admin(db, person)
-    if not admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="未绑定小程序管理权限，请在网站获取 6 位绑定码后完成绑定",
-        )
-    return admin
-
-
 def get_current_person_token(
     creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)],
     db: Session = Depends(get_db),
@@ -83,3 +70,16 @@ def get_current_person_token(
     if not person:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户无效")
     return person
+
+
+def get_current_mp_admin(
+    person: Annotated[Person, Depends(get_current_person_token)],
+    db: Session = Depends(get_db),
+) -> AdminUser:
+    admin = resolve_mp_admin(db, person)
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="未绑定小程序管理权限，请在网站获取 8 位绑定码后完成绑定",
+        )
+    return admin
