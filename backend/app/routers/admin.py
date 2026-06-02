@@ -12,6 +12,7 @@ from app.models import (
     AdminRole,
     AdminUser,
     AdminWxBindCode,
+    AdminWxBinding,
     Brigade,
     District,
     Organization,
@@ -31,6 +32,7 @@ from app.schemas import (
     AdminPersonRebindIn,
     AdminUserOut,
     AdminWxBindCodeOut,
+    AdminWxBindingOut,
     AttendanceAdd,
     BrigadeOut,
     DistrictOut,
@@ -750,6 +752,21 @@ def list_admin_accounts(
         .order_by(AdminUser.id)
         .all()
     )
+    binding_counts = dict(
+        db.query(AdminWxBinding.admin_user_id, func.count(AdminWxBinding.id))
+        .filter(AdminWxBinding.is_active.is_(True))
+        .group_by(AdminWxBinding.admin_user_id)
+        .all()
+    )
+    first_bindings = {
+        row[0]: row[1]
+        for row in (
+            db.query(AdminWxBinding.admin_user_id, func.min(AdminWxBinding.bound_at))
+            .filter(AdminWxBinding.is_active.is_(True))
+            .group_by(AdminWxBinding.admin_user_id)
+            .all()
+        )
+    }
     return [
         AdminAccountOut(
             id=u.id,
@@ -758,8 +775,9 @@ def list_admin_accounts(
             brigade_id=u.brigade_id,
             brigade_name=bname,
             is_active=u.is_active,
-            wx_bound=bool(u.wx_openid),
-            wx_bound_at=u.wx_bound_at,
+            wx_bound=bool(binding_counts.get(u.id)),
+            wx_bound_at=first_bindings.get(u.id),
+            wx_binding_count=int(binding_counts.get(u.id, 0)),
         )
         for u, bname in rows
     ]
@@ -799,8 +817,9 @@ def create_admin_account(
         brigade_id=u.brigade_id,
         brigade_name=bname,
         is_active=u.is_active,
-        wx_bound=bool(u.wx_openid),
-        wx_bound_at=u.wx_bound_at,
+        wx_bound=False,
+        wx_bound_at=None,
+        wx_binding_count=0,
     )
 
 
@@ -837,7 +856,12 @@ def create_admin_wx_bind_code(
 def _person_out(person: Person, db: Session) -> AdminPersonOut:
     district = db.get(District, person.district_id) if person.district_id else None
     org = db.get(Organization, person.organization_id) if person.organization_id else None
-    admin = db.query(AdminUser).filter(AdminUser.wx_openid == person.openid).first()
+    admin = (
+        db.query(AdminUser)
+        .join(AdminWxBinding, AdminWxBinding.admin_user_id == AdminUser.id)
+        .filter(AdminWxBinding.wx_openid == person.openid, AdminWxBinding.is_active.is_(True))
+        .first()
+    )
     admin_brigade = db.get(Brigade, admin.brigade_id) if admin and admin.brigade_id else None
     return AdminPersonOut(
         person_id=person.id,
@@ -882,16 +906,19 @@ def list_persons(
 
 
 def _sync_person_admin(person: Person, org: Organization, is_admin: bool, db: Session) -> None:
-    existing = db.query(AdminUser).filter(AdminUser.wx_openid == person.openid).first()
+    binding = db.query(AdminWxBinding).filter(AdminWxBinding.wx_openid == person.openid).first()
+    existing = db.get(AdminUser, binding.admin_user_id) if binding else None
     if not is_admin:
-        if existing:
-            existing.wx_openid = None
-            existing.wx_bound_at = None
+        if binding:
+            binding.is_active = False
         return
     if existing:
         existing.role = AdminRole.brigade
         existing.brigade_id = org.brigade_id
         existing.is_active = True
+        if binding:
+            binding.person_id = person.id
+            binding.is_active = True
         return
     username_base = f"mp_{person.id}"
     username = username_base
@@ -899,17 +926,16 @@ def _sync_person_admin(person: Person, org: Organization, is_admin: bool, db: Se
     while db.query(AdminUser).filter(AdminUser.username == username).first():
         suffix += 1
         username = f"{username_base}_{suffix}"
-    db.add(
-        AdminUser(
-            username=username,
-            password_hash=hash_password(secrets.token_urlsafe(16)),
-            role=AdminRole.brigade,
-            brigade_id=org.brigade_id,
-            is_active=True,
-            wx_openid=person.openid,
-            wx_bound_at=datetime.utcnow(),
-        )
+    admin = AdminUser(
+        username=username,
+        password_hash=hash_password(secrets.token_urlsafe(16)),
+        role=AdminRole.brigade,
+        brigade_id=org.brigade_id,
+        is_active=True,
     )
+    db.add(admin)
+    db.flush()
+    db.add(AdminWxBinding(admin_user_id=admin.id, wx_openid=person.openid, person_id=person.id, bound_at=datetime.utcnow()))
 
 
 @router.patch("/persons/{person_id}", response_model=AdminPersonOut)
@@ -972,6 +998,51 @@ def rebind_person_profile(
     return _person_out(person, db)
 
 
+@router.get("/accounts/{user_id}/wx-bindings", response_model=List[AdminWxBindingOut])
+def list_admin_wx_bindings(
+    user_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    u = db.get(AdminUser, user_id)
+    if not u:
+        raise HTTPException(404, "用户不存在")
+    rows = (
+        db.query(AdminWxBinding, Person)
+        .outerjoin(Person, Person.id == AdminWxBinding.person_id)
+        .filter(AdminWxBinding.admin_user_id == user_id, AdminWxBinding.is_active.is_(True))
+        .order_by(AdminWxBinding.bound_at.desc())
+        .all()
+    )
+    return [
+        AdminWxBindingOut(
+            id=b.id,
+            admin_user_id=b.admin_user_id,
+            wx_openid=b.wx_openid,
+            bound_at=b.bound_at,
+            is_active=b.is_active,
+            person_id=p.id if p else None,
+            person_name=p.name if p else None,
+            person_phone=p.phone if p else None,
+        )
+        for b, p in rows
+    ]
+
+
+@router.delete("/accounts/{user_id}/wx-bindings/{binding_id}", status_code=204)
+def clear_admin_wx_binding(
+    user_id: int,
+    binding_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    binding = db.get(AdminWxBinding, binding_id)
+    if not binding or binding.admin_user_id != user_id:
+        raise HTTPException(404, "绑定不存在")
+    binding.is_active = False
+    db.commit()
+
+
 @router.delete("/accounts/{user_id}/wx-bind", status_code=204)
 def clear_admin_wx_bind(
     user_id: int,
@@ -981,6 +1052,10 @@ def clear_admin_wx_bind(
     u = db.get(AdminUser, user_id)
     if not u:
         raise HTTPException(404, "用户不存在")
+    db.query(AdminWxBinding).filter(
+        AdminWxBinding.admin_user_id == user_id,
+        AdminWxBinding.is_active.is_(True),
+    ).update({AdminWxBinding.is_active: False}, synchronize_session=False)
     u.wx_openid = None
     u.wx_bound_at = None
     db.commit()
@@ -1020,6 +1095,16 @@ def update_admin_account(
     db.commit()
     db.refresh(u)
     bname = db.get(Brigade, u.brigade_id).name if u.brigade_id else None
+    binding_count = (
+        db.query(AdminWxBinding)
+        .filter(AdminWxBinding.admin_user_id == u.id, AdminWxBinding.is_active.is_(True))
+        .count()
+    )
+    first_binding = (
+        db.query(func.min(AdminWxBinding.bound_at))
+        .filter(AdminWxBinding.admin_user_id == u.id, AdminWxBinding.is_active.is_(True))
+        .scalar()
+    )
     return AdminAccountOut(
         id=u.id,
         username=u.username,
@@ -1027,8 +1112,9 @@ def update_admin_account(
         brigade_id=u.brigade_id,
         brigade_name=bname,
         is_active=u.is_active,
-        wx_bound=bool(u.wx_openid),
-        wx_bound_at=u.wx_bound_at,
+        wx_bound=bool(binding_count),
+        wx_bound_at=first_binding,
+        wx_binding_count=int(binding_count),
     )
 
 

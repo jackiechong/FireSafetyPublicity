@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import brigade_filter_brigade_id, get_current_mp_admin, get_current_person_token
-from app.models import AdminRole, AdminUser, AdminWxBindCode, Brigade, District, Organization, Person
+from app.models import AdminRole, AdminUser, AdminWxBindCode, AdminWxBinding, Brigade, District, Organization, Person
 from app.models import TrainingAttendance, TrainingSession
 from app.routers.admin import ORG_TYPE_LABELS, _build_quick_training_out, create_training_quick
 from app.routers.admin import stats_by_district, stats_orgs_by_district, stats_persons_by_organization, stats_types_by_district
@@ -54,7 +54,12 @@ def mp_wx_bind(
 
     existing = (
         db.query(AdminUser)
-        .filter(AdminUser.wx_openid == person.openid, AdminUser.is_active.is_(True))
+        .join(AdminWxBinding, AdminWxBinding.admin_user_id == AdminUser.id)
+        .filter(
+            AdminWxBinding.wx_openid == person.openid,
+            AdminWxBinding.is_active.is_(True),
+            AdminUser.is_active.is_(True),
+        )
         .first()
     )
     if existing:
@@ -81,23 +86,22 @@ def mp_wx_bind(
         db.commit()
         raise HTTPException(400, "目标管理员账号不可用")
 
-    other = (
-        db.query(AdminUser)
-        .filter(AdminUser.wx_openid == person.openid, AdminUser.id != admin.id)
-        .first()
-    )
-    if other:
+    binding = db.query(AdminWxBinding).filter(AdminWxBinding.wx_openid == person.openid).first()
+    if binding and binding.is_active and binding.admin_user_id != admin.id:
         row.failed_attempts += 1
         db.commit()
         raise HTTPException(400, "该微信已绑定其他管理员账号")
 
-    if admin.wx_openid and admin.wx_openid != person.openid:
-        row.failed_attempts += 1
-        db.commit()
-        raise HTTPException(400, "该管理员账号已绑定其他微信，请先在网站解除绑定")
-
-    admin.wx_openid = person.openid
-    admin.wx_bound_at = datetime.utcnow()
+    if binding:
+        binding.admin_user_id = admin.id
+        binding.person_id = person.id
+        binding.is_active = True
+        binding.bound_at = datetime.utcnow()
+    else:
+        db.add(AdminWxBinding(admin_user_id=admin.id, wx_openid=person.openid, person_id=person.id, bound_at=datetime.utcnow()))
+    if not admin.wx_openid:
+        admin.wx_openid = person.openid
+        admin.wx_bound_at = datetime.utcnow()
     row.used_at = datetime.utcnow()
     db.commit()
     db.refresh(admin)

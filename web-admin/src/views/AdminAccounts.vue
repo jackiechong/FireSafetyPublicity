@@ -17,10 +17,10 @@
       </el-table-column>
       <el-table-column label="小程序绑定" min-width="160">
         <template #default="{ row }">
-          <el-tag v-if="row.wx_bound" type="success">已绑定</el-tag>
+          <el-tag v-if="row.wx_bound" type="success">已绑定 {{ row.wx_binding_count || 0 }} 个微信</el-tag>
           <el-tag v-else type="info">未绑定</el-tag>
           <div v-if="row.wx_bound && row.wx_bound_at" class="bind-time">
-            {{ formatTime(row.wx_bound_at) }}
+            首次：{{ formatTime(row.wx_bound_at) }}
           </div>
         </template>
       </el-table-column>
@@ -36,7 +36,7 @@
           <el-button link type="success" :disabled="!row.is_active" @click="genBindCode(row)">
             生成绑定码
           </el-button>
-          <el-button link type="danger" :disabled="!row.wx_bound" @click="unbindWx(row)">解除绑定</el-button>
+          <el-button link type="info" :disabled="!row.wx_bound" @click="openBindings(row)">微信列表</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -115,6 +115,36 @@
         <el-button type="primary" @click="bindCodeVisible = false">知道了</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="bindingsVisible" title="已绑定微信" width="620px" destroy-on-close>
+      <p class="tip">
+        管理员账号 <b>{{ bindingsUser?.username }}</b> 可同时绑定多个微信；同一个微信不能绑定到其他管理员账号。
+      </p>
+      <el-table :data="bindings" border stripe v-loading="bindingsLoading" size="small">
+        <el-table-column label="人员" min-width="130">
+          <template #default="{ row }">{{ row.person_name || "未登记" }}</template>
+        </el-table-column>
+        <el-table-column label="手机号" width="130">
+          <template #default="{ row }">{{ row.person_phone || "—" }}</template>
+        </el-table-column>
+        <el-table-column label="绑定时间" width="150">
+          <template #default="{ row }">{{ formatTime(row.bound_at) }}</template>
+        </el-table-column>
+        <el-table-column label="OpenID" min-width="160">
+          <template #default="{ row }">
+            <span class="openid">{{ row.wx_openid }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="danger" @click="unbindWxBinding(row)">解绑</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="bindingsVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -153,6 +183,10 @@ const pwdForm = reactive({ new_password: "" });
 const bindCodeVisible = ref(false);
 const bindCodeUser = ref(null);
 const bindCodeData = ref(null);
+const bindingsVisible = ref(false);
+const bindingsUser = ref(null);
+const bindings = ref([]);
+const bindingsLoading = ref(false);
 
 function formatTime(iso) {
   if (!iso) return "";
@@ -284,13 +318,35 @@ async function genBindCode(row) {
   }
 }
 
-async function unbindWx(row) {
+async function openBindings(row) {
+  bindingsUser.value = row;
+  bindingsVisible.value = true;
+  await loadBindings();
+}
+
+async function loadBindings() {
+  if (!bindingsUser.value) return;
+  bindingsLoading.value = true;
   try {
-    await ElMessageBox.confirm(`确定解除「${row.username}」的小程序微信绑定？`, "解除绑定", {
+    const { data } = await http.get(`/api/admin/accounts/${bindingsUser.value.id}/wx-bindings`);
+    bindings.value = data || [];
+  } catch (e) {
+    console.error(e);
+    bindings.value = [];
+  } finally {
+    bindingsLoading.value = false;
+  }
+}
+
+async function unbindWxBinding(binding) {
+  try {
+    const label = binding.person_name || binding.person_phone || binding.wx_openid;
+    await ElMessageBox.confirm(`确定解除「${label}」的小程序微信绑定？`, "解除绑定", {
       type: "warning",
     });
-    await http.delete(`/api/admin/accounts/${row.id}/wx-bind`);
+    await http.delete(`/api/admin/accounts/${bindingsUser.value.id}/wx-bindings/${binding.id}`);
     ElMessage.success("已解除绑定");
+    await loadBindings();
     await load();
   } catch (e) {
     if (e !== "cancel") console.error(e);
@@ -340,5 +396,16 @@ h2 {
   margin-top: 12px;
   color: #666;
   font-size: 13px;
+}
+.openid {
+  display: inline-block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: #666;
 }
 </style>

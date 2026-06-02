@@ -49,6 +49,7 @@ class AdminUser(Base):
 
     brigade = relationship("Brigade", back_populates="admins")
     wx_bind_codes = relationship("AdminWxBindCode", back_populates="admin_user")
+    wx_bindings = relationship("AdminWxBinding", back_populates="admin_user")
 
 
 class AdminWxBindCode(Base):
@@ -65,6 +66,23 @@ class AdminWxBindCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     admin_user = relationship("AdminUser", back_populates="wx_bind_codes")
+
+
+class AdminWxBinding(Base):
+    """管理员账号与小程序微信 openid 的多对一绑定；一个账号可绑多个微信，一个微信只绑一个账号。"""
+
+    __tablename__ = "admin_wx_bindings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    admin_user_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"), index=True)
+    wx_openid: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("persons.id"), nullable=True, index=True)
+    bound_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    remark: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    admin_user = relationship("AdminUser", back_populates="wx_bindings")
+    person = relationship("Person", foreign_keys=[person_id])
 
 
 class Brigade(Base):

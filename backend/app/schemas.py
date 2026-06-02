@@ -35,6 +35,18 @@ class AdminAccountOut(BaseModel):
     is_active: bool
     wx_bound: bool = False
     wx_bound_at: Optional[datetime] = None
+    wx_binding_count: int = 0
+
+
+class AdminWxBindingOut(BaseModel):
+    id: int
+    admin_user_id: int
+    wx_openid: str
+    bound_at: datetime
+    is_active: bool = True
+    person_id: Optional[int] = None
+    person_name: Optional[str] = None
+    person_phone: Optional[str] = None
 
 
 class AdminWxBindCodeOut(BaseModel):

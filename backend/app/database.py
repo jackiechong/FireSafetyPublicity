@@ -60,6 +60,31 @@ def sqlite_migrate_legacy_person_columns() -> None:
             if "failed_attempts" not in cols:
                 conn.execute(text("ALTER TABLE admin_wx_bind_codes ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0"))
 
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS admin_wx_bindings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_user_id INTEGER NOT NULL,
+                wx_openid VARCHAR(64) NOT NULL UNIQUE,
+                person_id INTEGER,
+                bound_at DATETIME,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                remark VARCHAR(256),
+                FOREIGN KEY(admin_user_id) REFERENCES admin_users(id),
+                FOREIGN KEY(person_id) REFERENCES persons(id)
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_admin_wx_bindings_admin_user_id ON admin_wx_bindings(admin_user_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_admin_wx_bindings_wx_openid ON admin_wx_bindings(wx_openid)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_admin_wx_bindings_person_id ON admin_wx_bindings(person_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_admin_wx_bindings_is_active ON admin_wx_bindings(is_active)"))
+        conn.execute(text("""
+            INSERT OR IGNORE INTO admin_wx_bindings (admin_user_id, wx_openid, person_id, bound_at, is_active, remark)
+            SELECT admin_users.id, admin_users.wx_openid, persons.id, COALESCE(admin_users.wx_bound_at, CURRENT_TIMESTAMP), 1, 'MIGRATED_LEGACY'
+            FROM admin_users
+            LEFT JOIN persons ON persons.openid = admin_users.wx_openid
+            WHERE admin_users.wx_openid IS NOT NULL AND admin_users.wx_openid != ''
+        """))
+
 
 def get_db():
     db = SessionLocal()

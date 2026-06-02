@@ -5,7 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AdminRole, AdminUser, Person
+from app.models import AdminRole, AdminUser, AdminWxBinding, Person
 from app.security import decode_token
 
 security = HTTPBearer(auto_error=False)
@@ -48,7 +48,12 @@ def resolve_mp_admin(db: Session, person: Person) -> AdminUser | None:
         return None
     return (
         db.query(AdminUser)
-        .filter(AdminUser.wx_openid == person.openid, AdminUser.is_active.is_(True))
+        .join(AdminWxBinding, AdminWxBinding.admin_user_id == AdminUser.id)
+        .filter(
+            AdminWxBinding.wx_openid == person.openid,
+            AdminWxBinding.is_active.is_(True),
+            AdminUser.is_active.is_(True),
+        )
         .first()
     )
 
