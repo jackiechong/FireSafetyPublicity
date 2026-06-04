@@ -72,6 +72,39 @@ class AdminPasswordReset(BaseModel):
     new_password: str = Field(..., min_length=6, max_length=128)
 
 
+class DictionaryOptionOut(BaseModel):
+    id: int
+    name: str
+    sort_order: int = 100
+    is_active: bool = True
+    code: Optional[str] = None
+
+
+class OrgTypeOptionCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+    code: Optional[str] = Field(default=None, max_length=64)
+    sort_order: int = Field(default=100, ge=0, le=9999)
+    is_active: bool = True
+
+
+class OrgTypeOptionUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    sort_order: Optional[int] = Field(default=None, ge=0, le=9999)
+    is_active: Optional[bool] = None
+
+
+class JobTitleOptionCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+    sort_order: int = Field(default=100, ge=0, le=9999)
+    is_active: bool = True
+
+
+class JobTitleOptionUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    sort_order: Optional[int] = Field(default=None, ge=0, le=9999)
+    is_active: Optional[bool] = None
+
+
 class BrigadeOut(BaseModel):
     id: int
     name: str
@@ -89,7 +122,7 @@ class DistrictOut(BaseModel):
 
 class OrganizationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=256)
-    org_type: OrgType
+    org_type: str = Field(..., min_length=1, max_length=64)
     brigade_id: int
     district_id: int
     contact_name: Optional[str] = None
@@ -99,7 +132,7 @@ class OrganizationCreate(BaseModel):
 
 class OrganizationUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=256)
-    org_type: Optional[OrgType] = None
+    org_type: Optional[str] = Field(default=None, min_length=1, max_length=64)
     brigade_id: Optional[int] = None
     district_id: Optional[int] = None
     contact_name: Optional[str] = None
@@ -110,7 +143,7 @@ class OrganizationUpdate(BaseModel):
 class OrganizationOut(BaseModel):
     id: int
     name: str
-    org_type: OrgType
+    org_type: str
     brigade_id: int
     district_id: int
     contact_name: Optional[str] = None
@@ -220,14 +253,14 @@ class MpProfileIn(BaseModel):
     phone: str = Field(..., min_length=11, max_length=11)
     district_id: int = Field(..., description="所属区县")
     organization_id: int = Field(..., description="所属单位")
-    job_title: Optional[str] = Field(default=None, max_length=64, description="职务/岗位")
+    job_title: str = Field(..., min_length=1, max_length=64, description="职务/岗位")
 
 
 class MpOrganizationCreateIn(BaseModel):
     """小程序绑定页选「其他单位」时自助新增单位。"""
     district_id: int = Field(..., ge=1)
     name: str = Field(..., min_length=2, max_length=256)
-    org_type: OrgType = OrgType.other_department
+    org_type: str = Field(default=OrgType.other_department.value, min_length=1, max_length=64)
 
 
 class MpPersonOut(BaseModel):
@@ -372,5 +405,5 @@ class StatsSearchItem(BaseModel):
 class SuggestItem(BaseModel):
     id: int
     name: str
-    org_type: OrgType
+    org_type: str
     district_name: str

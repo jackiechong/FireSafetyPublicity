@@ -61,7 +61,7 @@ Page({
       this.setData({
         activeList,
         selectedSessionId: exists ? this.data.selectedSessionId : activeList.length === 1 ? activeList[0].session_id : 0,
-        error: activeList.length ? "" : "今天暂无正在进行的培训场次",
+        error: activeList.length ? "" : "今天暂无可加入的培训场次",
       });
     } catch (e) {
       if (String(e.message || "").includes("完成单位")) {

@@ -8,15 +8,22 @@
     <view class="row"><text class="k">职务</text><text>{{person.job_title || '-'}}</text></view>
   </view>
 
-  <view class="section-row">
-    <view class="section-title">培训记录</view>
-    <view class="identity-bind" bindtap="goAdminEntry">{{person.is_admin ? '培训管理' : '身份绑定'}}</view>
+  <view wx:if="{{person.is_admin}}" class="card stats-module" bindtap="goAdminTraining">
+    <view class="stats-title">培训管理</view>
+    <view class="stats-sub">创建培训、生成二维码并管理现场培训</view>
   </view>
 
   <view wx:if="{{person.is_admin}}" class="card stats-module" bindtap="goAdminStats">
     <view class="stats-title">数据回看</view>
     <view class="stats-sub">查看区县培训时长与类型占比</view>
   </view>
+
+  <view class="card stats-module">
+    <view class="stats-title">培训记录</view>
+    <view class="stats-sub">查看本人已加入的培训场次</view>
+  </view>
+
+  <button wx:if="{{!person.is_admin}}" class="join-training-btn" bindtap="goCheckin">加入培训</button>
 
   <block wx:if="{{list.length === 0}}">
     <view class="empty">暂无记录（需管理端将您加入培训名单）</view>

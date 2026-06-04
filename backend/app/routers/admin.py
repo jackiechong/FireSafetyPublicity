@@ -15,8 +15,10 @@ from app.models import (
     AdminWxBinding,
     Brigade,
     District,
+    JobTitleOption,
     Organization,
     OrgType,
+    OrgTypeOption,
     Person,
     TrainingAttendance,
     TrainingSession,
@@ -36,9 +38,14 @@ from app.schemas import (
     AttendanceAdd,
     BrigadeOut,
     DistrictOut,
+    DictionaryOptionOut,
+    JobTitleOptionCreate,
+    JobTitleOptionUpdate,
     OrganizationCreate,
     OrganizationOut,
     OrganizationUpdate,
+    OrgTypeOptionCreate,
+    OrgTypeOptionUpdate,
     QuickTrainingCreate,
     QuickTrainingOut,
     StatsDistrictItem,
@@ -71,6 +78,28 @@ ORG_TYPE_LABELS = {
     OrgType.department: "其他部门",
     OrgType.enterprise: "其他部门",
 }
+
+
+def _org_type_value(value) -> str:
+    return value.value if hasattr(value, "value") else str(value or "")
+
+
+def _org_type_labels(db: Session) -> dict[str, str]:
+    labels = {_org_type_value(k): v for k, v in ORG_TYPE_LABELS.items()}
+    for item in db.query(OrgTypeOption).filter(OrgTypeOption.is_active.is_(True)).all():
+        labels[item.code] = item.name
+    return labels
+
+
+def _org_type_name(value, db: Session) -> str:
+    code = _org_type_value(value)
+    return _org_type_labels(db).get(code, code or "其他部门")
+
+
+def _slug_code(name: str) -> str:
+    raw = "".join(ch.lower() if ch.isalnum() else "_" for ch in name.strip())
+    raw = "_".join(part for part in raw.split("_") if part)
+    return raw[:48] or f"custom_{secrets.randbelow(1_000_000):06d}"
 
 
 @router.post("/login", response_model=Token)
@@ -107,6 +136,155 @@ def list_brigades(
 @router.get("/districts", response_model=List[DistrictOut])
 def list_districts(db: Session = Depends(get_db)):
     return db.query(District).order_by(District.id).all()
+
+
+@router.get("/org-types", response_model=List[DictionaryOptionOut])
+def list_org_type_options(
+    _: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    include_inactive: bool = False,
+):
+    q = db.query(OrgTypeOption)
+    if not include_inactive:
+        q = q.filter(OrgTypeOption.is_active.is_(True))
+    rows = q.order_by(OrgTypeOption.sort_order, OrgTypeOption.id).all()
+    return [
+        DictionaryOptionOut(id=o.id, code=o.code, name=o.name, sort_order=o.sort_order, is_active=o.is_active)
+        for o in rows
+    ]
+
+
+@router.post("/org-types", response_model=DictionaryOptionOut)
+def create_org_type_option(
+    body: OrgTypeOptionCreate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    name = body.name.strip()
+    code = (body.code or _slug_code(name)).strip()
+    if db.query(OrgTypeOption).filter(or_(OrgTypeOption.name == name, OrgTypeOption.code == code)).first():
+        raise HTTPException(400, "单位类型名称或编码已存在")
+    row = OrgTypeOption(code=code, name=name, sort_order=body.sort_order, is_active=body.is_active)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return DictionaryOptionOut(id=row.id, code=row.code, name=row.name, sort_order=row.sort_order, is_active=row.is_active)
+
+
+@router.patch("/org-types/{item_id}", response_model=DictionaryOptionOut)
+def update_org_type_option(
+    item_id: int,
+    body: OrgTypeOptionUpdate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(OrgTypeOption, item_id)
+    if not row:
+        raise HTTPException(404, "单位类型不存在")
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data and data["name"]:
+        name = data["name"].strip()
+        dup = db.query(OrgTypeOption).filter(OrgTypeOption.name == name, OrgTypeOption.id != row.id).first()
+        if dup:
+            raise HTTPException(400, "单位类型名称已存在")
+        row.name = name
+    if "sort_order" in data:
+        row.sort_order = data["sort_order"]
+    if "is_active" in data:
+        row.is_active = data["is_active"]
+    db.commit()
+    db.refresh(row)
+    return DictionaryOptionOut(id=row.id, code=row.code, name=row.name, sort_order=row.sort_order, is_active=row.is_active)
+
+
+@router.delete("/org-types/{item_id}", status_code=204)
+def delete_org_type_option(
+    item_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(OrgTypeOption, item_id)
+    if not row:
+        raise HTTPException(404, "单位类型不存在")
+    if db.query(Organization).filter(Organization.org_type == row.code).first():
+        row.is_active = False
+    else:
+        db.delete(row)
+    db.commit()
+
+
+@router.get("/job-titles", response_model=List[DictionaryOptionOut])
+def list_job_title_options(
+    _: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    include_inactive: bool = False,
+):
+    q = db.query(JobTitleOption)
+    if not include_inactive:
+        q = q.filter(JobTitleOption.is_active.is_(True))
+    rows = q.order_by(JobTitleOption.sort_order, JobTitleOption.id).all()
+    return [
+        DictionaryOptionOut(id=o.id, name=o.name, sort_order=o.sort_order, is_active=o.is_active)
+        for o in rows
+    ]
+
+
+@router.post("/job-titles", response_model=DictionaryOptionOut)
+def create_job_title_option(
+    body: JobTitleOptionCreate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    name = body.name.strip()
+    if db.query(JobTitleOption).filter(JobTitleOption.name == name).first():
+        raise HTTPException(400, "职务名称已存在")
+    row = JobTitleOption(name=name, sort_order=body.sort_order, is_active=body.is_active)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return DictionaryOptionOut(id=row.id, name=row.name, sort_order=row.sort_order, is_active=row.is_active)
+
+
+@router.patch("/job-titles/{item_id}", response_model=DictionaryOptionOut)
+def update_job_title_option(
+    item_id: int,
+    body: JobTitleOptionUpdate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(JobTitleOption, item_id)
+    if not row:
+        raise HTTPException(404, "职务不存在")
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data and data["name"]:
+        name = data["name"].strip()
+        dup = db.query(JobTitleOption).filter(JobTitleOption.name == name, JobTitleOption.id != row.id).first()
+        if dup:
+            raise HTTPException(400, "职务名称已存在")
+        row.name = name
+    if "sort_order" in data:
+        row.sort_order = data["sort_order"]
+    if "is_active" in data:
+        row.is_active = data["is_active"]
+    db.commit()
+    db.refresh(row)
+    return DictionaryOptionOut(id=row.id, name=row.name, sort_order=row.sort_order, is_active=row.is_active)
+
+
+@router.delete("/job-titles/{item_id}", status_code=204)
+def delete_job_title_option(
+    item_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(JobTitleOption, item_id)
+    if not row:
+        raise HTTPException(404, "职务不存在")
+    if db.query(Person).filter(Person.job_title == row.name).first():
+        row.is_active = False
+    else:
+        db.delete(row)
+    db.commit()
 
 
 def _org_query(admin: AdminUser, db: Session):
@@ -169,6 +347,8 @@ def create_organization(
 ):
     if admin.role == AdminRole.brigade and body.brigade_id != admin.brigade_id:
         raise HTTPException(403, "只能在本大队下创建单位")
+    if not db.query(OrgTypeOption).filter(OrgTypeOption.code == body.org_type, OrgTypeOption.is_active.is_(True)).first():
+        raise HTTPException(400, "单位类型不存在或已停用")
     o = Organization(**body.model_dump())
     db.add(o)
     db.commit()
@@ -189,6 +369,8 @@ def update_organization(
     if admin.role == AdminRole.brigade and o.brigade_id != admin.brigade_id:
         raise HTTPException(403, "无权操作")
     data = body.model_dump(exclude_unset=True)
+    if "org_type" in data and not db.query(OrgTypeOption).filter(OrgTypeOption.code == data["org_type"], OrgTypeOption.is_active.is_(True)).first():
+        raise HTTPException(400, "单位类型不存在或已停用")
     if admin.role == AdminRole.brigade and "brigade_id" in data and data["brigade_id"] != admin.brigade_id:
         raise HTTPException(403, "不能修改所属大队")
     for k, v in data.items():
@@ -580,7 +762,7 @@ def stats_types_by_district(
     org_type_by_id = {o.id: o.org_type for o in orgs}
     counts: dict[str, int] = {}
     for o in orgs:
-        label = ORG_TYPE_LABELS.get(o.org_type, "其他部门")
+        label = _org_type_name(o.org_type, db)
         counts[label] = counts.get(label, 0) + 1
 
     q = (
@@ -604,7 +786,7 @@ def stats_types_by_district(
         for label, count in counts.items()
     }
     for oid, minutes, persons in rows:
-        label = ORG_TYPE_LABELS.get(org_type_by_id.get(oid), "其他部门")
+        label = _org_type_name(org_type_by_id.get(oid), db)
         if label not in totals:
             totals[label] = {"total_minutes": 0, "person_count": 0, "organization_count": 0}
         totals[label]["total_minutes"] += int(minutes or 0)
@@ -640,7 +822,7 @@ def stats_search_suggest(
     for o in oq.all():
         d = db.get(District, o.district_id)
         dname = d.name if d else ""
-        ot = ORG_TYPE_LABELS.get(o.org_type, "其他部门")
+        ot = _org_type_name(o.org_type, db)
         out.append(
             StatsSearchItem(
                 kind="organization",

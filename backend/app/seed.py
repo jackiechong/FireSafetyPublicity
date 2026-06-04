@@ -12,8 +12,10 @@ from app.models import (
     AdminUser,
     Brigade,
     District,
+    JobTitleOption,
     Organization,
     OrgType,
+    OrgTypeOption,
     Person,
     TrainingAttendance,
     TrainingSession,
@@ -63,6 +65,20 @@ DISTRICT_DEFAULT_BRIGADE: dict[str, str] = {
     "经济开发区": "JJKFQ",
     "高新技术开发区": "GXJSQ",
 }
+
+DEFAULT_ORG_TYPES: list[tuple[str, str]] = [
+    ("emergency", "应急"),
+    ("education", "教育"),
+    ("civil_affairs", "民政"),
+    ("culture_tourism", "文旅"),
+    ("health", "卫建"),
+    ("commerce", "商务"),
+    ("industry_agriculture", "农业农村"),
+    ("development_reform", "发改"),
+    ("other_department", "其他部门"),
+]
+
+DEFAULT_JOB_TITLES = ["消防安全责任人", "消防安全管理人", "安全员", "值班长", "员工", "主管", "电工"]
 
 DEMO_ORG_SPECS: list[tuple[str, OrgType, str, str]] = [
     ("【测试】连山商业综合体", OrgType.commerce, "LS", "连山区"),
@@ -139,6 +155,7 @@ def seed():
     try:
         _ensure_districts(db)
         _ensure_brigades(db)
+        _ensure_dictionary_options(db)
         _retire_removed_brigades(db)
         _ensure_fire_brigade_organizations(db)
         _ensure_other_organizations(db)
@@ -200,6 +217,27 @@ def _ensure_other_organizations(db: Session) -> None:
             )
         )
         changed = True
+    if changed:
+        db.commit()
+
+
+def _ensure_dictionary_options(db: Session) -> None:
+    changed = False
+    existing_types = {x.code: x for x in db.query(OrgTypeOption).all()}
+    for idx, (code, name) in enumerate(DEFAULT_ORG_TYPES, start=1):
+        item = existing_types.get(code)
+        if not item:
+            db.add(OrgTypeOption(code=code, name=name, sort_order=idx, is_active=True))
+            changed = True
+        elif item.name != name:
+            item.name = name
+            changed = True
+
+    existing_titles = {x.name for x in db.query(JobTitleOption).all()}
+    for idx, name in enumerate(DEFAULT_JOB_TITLES, start=1):
+        if name not in existing_titles:
+            db.add(JobTitleOption(name=name, sort_order=idx, is_active=True))
+            changed = True
     if changed:
         db.commit()
 

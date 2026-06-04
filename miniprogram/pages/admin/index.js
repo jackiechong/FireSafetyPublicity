@@ -1,6 +1,6 @@
 const { request } = require("../../utils/request");
 const cfg = require("../../utils/config");
-const ORG_TYPE_LABELS = {
+const FALLBACK_ORG_TYPE_LABELS = {
   emergency: "应急",
   education: "教育",
   civil_affairs: "民政",
@@ -42,6 +42,7 @@ Page({
     trainings: [],
     qrInfo: null,
     qrUrl: "",
+    orgTypeLabels: FALLBACK_ORG_TYPE_LABELS,
   },
 
   onShow() {
@@ -68,7 +69,20 @@ Page({
       });
       return;
     }
-    await Promise.all([this.loadDistricts(), this.loadTrainings()]);
+    await Promise.all([this.loadOrgTypes(), this.loadDistricts(), this.loadTrainings()]);
+  },
+
+  async loadOrgTypes() {
+    try {
+      const list = await request({ url: "/api/mp/org-types" });
+      const labels = { ...FALLBACK_ORG_TYPE_LABELS };
+      (list || []).forEach((item) => {
+        if (item.code) labels[item.code] = item.name;
+      });
+      this.setData({ orgTypeLabels: labels });
+    } catch (e) {
+      this.setData({ orgTypeLabels: FALLBACK_ORG_TYPE_LABELS });
+    }
   },
 
   async loadDistricts() {
@@ -89,9 +103,10 @@ Page({
     const list = await request({
       url: `/api/mp/admin/organizations?district_id=${districtId}&q=`,
     });
-    const labels = (list || []).map(
-      (o) => `${o.name}（${ORG_TYPE_LABELS[o.org_type] || "其他部门"}）`
-    );
+    const labels = (list || []).map((o) => {
+      const typeName = this.data.orgTypeLabels[o.org_type] || o.org_type || "其他部门";
+      return `${o.name}（${typeName}）`;
+    });
     this.setData({
       orgList: list || [],
       orgLabels: labels,

@@ -86,6 +86,11 @@ const routes = [
         name: "accounts",
         component: () => import("../views/AdminAccounts.vue"),
       },
+      {
+        path: "dicts",
+        name: "dicts",
+        component: () => import("../views/DictionaryOptions.vue"),
+      },
     ],
   },
 ];

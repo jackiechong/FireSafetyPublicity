@@ -30,7 +30,7 @@
       <div class="h5-field">
         <label>类型</label>
         <select v-model="customOrgType">
-          <option v-for="t in orgTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
+          <option v-for="t in orgTypes" :key="t.code" :value="t.code">{{ t.name }}</option>
         </select>
       </div>
     </div>
@@ -46,8 +46,11 @@
     </div>
 
     <div class="h5-field">
-      <label>职务 / 岗位（选填）</label>
-      <input v-model.trim="jobTitle" maxlength="40" placeholder="如：安全员" />
+      <label>职务 / 岗位</label>
+      <select v-model="jobTitle">
+        <option value="">请选择职务 / 岗位</option>
+        <option v-for="t in jobTitles" :key="t.id" :value="t.name">{{ t.name }}</option>
+      </select>
     </div>
 
     <button class="h5-btn-primary" :disabled="loading" @click="submit">
@@ -75,20 +78,11 @@ const districtId = ref(0);
 const orgChoice = ref(""); // 单位 id 字符串 or "__OTHER__"
 const customOrgName = ref("");
 const customOrgType = ref("other_department");
-const orgTypes = [
-  { value: "emergency", label: "应急" },
-  { value: "education", label: "教育" },
-  { value: "civil_affairs", label: "民政" },
-  { value: "culture_tourism", label: "文旅" },
-  { value: "health", label: "卫建" },
-  { value: "commerce", label: "商务" },
-  { value: "industry_agriculture", label: "农业农村" },
-  { value: "development_reform", label: "发改" },
-  { value: "other_department", label: "其他部门" },
-];
+const orgTypes = ref([]);
+const jobTitles = ref([]);
 
 function orgTypeName(value) {
-  return orgTypes.find((t) => t.value === value)?.label || "其他部门";
+  return orgTypes.value.find((t) => t.code === value)?.name || value || "其他部门";
 }
 
 const name = ref("");
@@ -106,6 +100,16 @@ function getSessionIdFromUrl() {
 async function loadDistricts() {
   const { data } = await mpHttp.get("/api/mp/districts");
   districts.value = data || [];
+}
+
+async function loadDictionaries() {
+  const [typesRes, jobsRes] = await Promise.all([
+    mpHttp.get("/api/mp/org-types"),
+    mpHttp.get("/api/mp/job-titles"),
+  ]);
+  orgTypes.value = typesRes.data || [];
+  jobTitles.value = jobsRes.data || [];
+  customOrgType.value = orgTypes.value[0]?.code || "other_department";
 }
 
 async function loadOrgs() {
@@ -133,7 +137,7 @@ async function init() {
   const profile = await ensureH5Login(getSessionIdFromUrl());
   if (!profile) return; // 已跳走
   me.value = profile;
-  await loadDistricts();
+  await Promise.all([loadDistricts(), loadDictionaries()]);
   if (profile.district_id) {
     districtId.value = profile.district_id;
     await loadOrgs();
@@ -163,6 +167,10 @@ async function submit() {
     errorMsg.value = "请输入新单位名称";
     return;
   }
+  if (!jobTitle.value) {
+    errorMsg.value = "请选择职务 / 岗位";
+    return;
+  }
   loading.value = true;
   try {
     let organization_id = Number(orgChoice.value);
@@ -179,7 +187,7 @@ async function submit() {
       phone: phone.value,
       district_id: districtId.value,
       organization_id,
-      job_title: jobTitle.value || undefined,
+      job_title: jobTitle.value,
     });
     const sid = getSessionIdFromUrl();
     if (sid) {

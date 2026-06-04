@@ -2,7 +2,7 @@
   <view class="card status-card">
     <block wx:if="{{loading}}">
       <view class="status-title">加载中</view>
-      <view class="status-text">请稍候，正在获取今天正在进行的培训。</view>
+      <view class="status-text">请稍候，正在获取今天可加入的培训。</view>
     </block>
 
     <block wx:elif="{{result}}">
@@ -17,7 +17,7 @@
 
     <block wx:elif="{{activeList.length}}">
       <view class="status-title">选择培训场次</view>
-      <view class="status-text">以下为全市今天正在进行的培训，请选择您所在现场加入。</view>
+      <view class="status-text">以下为全市今天已生成且未结束的培训，请选择您所在现场加入。</view>
       <block wx:for="{{activeList}}" wx:key="session_id">
         <view
           class="training-item {{selectedSessionId === item.session_id ? 'selected' : ''}}"
@@ -35,7 +35,7 @@
 
     <block wx:else>
       <view class="status-title bad">暂无可加入培训</view>
-      <view class="status-text">{{error || '今天暂无正在进行的培训场次'}}</view>
+      <view class="status-text">{{error || '今天暂无可加入的培训场次'}}</view>
     </block>
   </view>
 </view>

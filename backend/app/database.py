@@ -85,6 +85,30 @@ def sqlite_migrate_legacy_person_columns() -> None:
             WHERE admin_users.wx_openid IS NOT NULL AND admin_users.wx_openid != ''
         """))
 
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS org_type_options (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code VARCHAR(64) NOT NULL UNIQUE,
+                name VARCHAR(64) NOT NULL UNIQUE,
+                sort_order INTEGER NOT NULL DEFAULT 100,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_org_type_options_code ON org_type_options(code)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_org_type_options_is_active ON org_type_options(is_active)"))
+
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS job_title_options (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR(64) NOT NULL UNIQUE,
+                sort_order INTEGER NOT NULL DEFAULT 100,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_job_title_options_is_active ON job_title_options(is_active)"))
+
 
 def get_db():
     db = SessionLocal()

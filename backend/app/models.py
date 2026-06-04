@@ -35,6 +35,27 @@ class AdminRole(str, enum.Enum):
     brigade = "brigade"  # 大队：只看本大队
 
 
+class OrgTypeOption(Base):
+    __tablename__ = "org_type_options"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class JobTitleOption(Base):
+    __tablename__ = "job_title_options"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class AdminUser(Base):
     __tablename__ = "admin_users"
 
@@ -110,7 +131,7 @@ class Organization(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(256), index=True)
-    org_type: Mapped[OrgType] = mapped_column(Enum(OrgType))
+    org_type: Mapped[str] = mapped_column(String(64))
     brigade_id: Mapped[int] = mapped_column(ForeignKey("brigades.id"), index=True)
     district_id: Mapped[int] = mapped_column(ForeignKey("districts.id"), index=True)
     contact_name: Mapped[str | None] = mapped_column(String(64), nullable=True)

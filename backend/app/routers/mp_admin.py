@@ -11,7 +11,7 @@ from app.database import get_db
 from app.deps import brigade_filter_brigade_id, get_current_mp_admin, get_current_person_token
 from app.models import AdminRole, AdminUser, AdminWxBindCode, AdminWxBinding, Brigade, District, Organization, Person
 from app.models import TrainingAttendance, TrainingSession
-from app.routers.admin import ORG_TYPE_LABELS, _build_quick_training_out, create_training_quick
+from app.routers.admin import _build_quick_training_out, _org_type_name, create_training_quick
 from app.routers.admin import stats_by_district, stats_orgs_by_district, stats_persons_by_organization, stats_types_by_district
 from app.schemas import (
     DistrictOut,
@@ -184,7 +184,7 @@ def _mp_admin_stats_types_citywide(
     org_type_by_id = {o.id: o.org_type for o in orgs}
     counts: dict[str, int] = {}
     for org in orgs:
-        label = ORG_TYPE_LABELS.get(org.org_type, "其他部门")
+        label = _org_type_name(org.org_type, db)
         counts[label] = counts.get(label, 0) + 1
 
     q = (
@@ -208,7 +208,7 @@ def _mp_admin_stats_types_citywide(
         for label, count in counts.items()
     }
     for oid, minutes, persons in q.all():
-        label = ORG_TYPE_LABELS.get(org_type_by_id.get(oid), "其他部门")
+        label = _org_type_name(org_type_by_id.get(oid), db)
         if label not in totals:
             totals[label] = {"total_minutes": 0, "person_count": 0, "organization_count": 0}
         totals[label]["total_minutes"] += int(minutes or 0)
@@ -353,7 +353,7 @@ def mp_admin_organizations(
     if q.strip():
         query = query.filter(Organization.name.like(f"%{q.strip()}%"))
     rows = query.order_by(Organization.name).limit(100).all()
-    return [MpOrgListItem(id=o.id, name=o.name, org_type=o.org_type.value) for o in rows]
+    return [MpOrgListItem(id=o.id, name=o.name, org_type=str(o.org_type)) for o in rows]
 
 
 @router.get("/trainings", response_model=List[TrainingSessionOut])

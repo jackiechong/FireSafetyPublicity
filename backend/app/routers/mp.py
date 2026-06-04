@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_person_token, resolve_mp_admin
-from app.models import Brigade, District, Organization, Person, TrainingAttendance, TrainingSession
+from app.models import Brigade, District, JobTitleOption, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession
 from app.schemas import (
     DistrictOut,
     MpActiveTrainingItem,
@@ -21,6 +21,7 @@ from app.schemas import (
     MpPersonOut,
     MpProfileIn,
     MpTrainingItem,
+    DictionaryOptionOut,
 )
 from app.security import create_access_token
 from app.training_activity import deactivate_expired_sessions, effective_end_utc, session_allows_checkin, today_bounds_utc
@@ -123,6 +124,24 @@ def mp_districts(
     return db.query(District).order_by(District.id).all()
 
 
+@router.get("/org-types", response_model=List[DictionaryOptionOut])
+def mp_org_types(
+    _: Annotated[Person, Depends(get_current_person_token)],
+    db: Session = Depends(get_db),
+):
+    rows = db.query(OrgTypeOption).filter(OrgTypeOption.is_active.is_(True)).order_by(OrgTypeOption.sort_order, OrgTypeOption.id).all()
+    return [DictionaryOptionOut(id=o.id, code=o.code, name=o.name, sort_order=o.sort_order, is_active=o.is_active) for o in rows]
+
+
+@router.get("/job-titles", response_model=List[DictionaryOptionOut])
+def mp_job_titles(
+    _: Annotated[Person, Depends(get_current_person_token)],
+    db: Session = Depends(get_db),
+):
+    rows = db.query(JobTitleOption).filter(JobTitleOption.is_active.is_(True)).order_by(JobTitleOption.sort_order, JobTitleOption.id).all()
+    return [DictionaryOptionOut(id=o.id, name=o.name, sort_order=o.sort_order, is_active=o.is_active) for o in rows]
+
+
 @router.get("/organizations", response_model=List[MpOrgListItem])
 def mp_organizations(
     _: Annotated[Person, Depends(get_current_person_token)],
@@ -146,7 +165,7 @@ def mp_organizations(
         else_=len(priority_names),
     )
     rows = query.order_by(priority_order, Organization.name).limit(100).all()
-    return [MpOrgListItem(id=o.id, name=o.name, org_type=o.org_type.value) for o in rows]
+    return [MpOrgListItem(id=o.id, name=o.name, org_type=str(o.org_type)) for o in rows]
 
 
 # 小程序自助创建单位时，按所在区县选择默认承接大队
@@ -180,7 +199,9 @@ def mp_create_organization(
         .first()
     )
     if dup:
-        return MpOrgListItem(id=dup.id, name=dup.name, org_type=dup.org_type.value)
+        return MpOrgListItem(id=dup.id, name=dup.name, org_type=str(dup.org_type))
+    if not db.query(OrgTypeOption).filter(OrgTypeOption.code == body.org_type, OrgTypeOption.is_active.is_(True)).first():
+        raise HTTPException(400, "单位类型不存在或已停用")
 
     code = _DISTRICT_DEFAULT_BRIGADE_CODE.get(district.name)
     brigade = (
@@ -199,7 +220,7 @@ def mp_create_organization(
     db.add(org)
     db.commit()
     db.refresh(org)
-    return MpOrgListItem(id=org.id, name=org.name, org_type=org.org_type.value)
+    return MpOrgListItem(id=org.id, name=org.name, org_type=str(org.org_type))
 
 
 @router.post("/profile", response_model=MpPersonOut)
@@ -233,7 +254,7 @@ def mp_active_trainings(
     person: Annotated[Person, Depends(get_current_person_token)],
     db: Session = Depends(get_db),
 ):
-    """今天全市正在进行且未手动结束的活动场次。"""
+    """今天全市未结束且未手动结束的活动场次，供人员选择加入。"""
     _require_complete_profile(person)
     deactivate_expired_sessions(db)
     now = datetime.utcnow()
@@ -245,7 +266,6 @@ def mp_active_trainings(
         .filter(TrainingSession.is_active.is_(True))
         .filter(TrainingSession.start_at >= day_start)
         .filter(TrainingSession.start_at < day_end)
-        .filter(TrainingSession.start_at <= now)
         .order_by(TrainingSession.start_at.desc())
         .limit(300)
         .all()

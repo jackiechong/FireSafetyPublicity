@@ -1,6 +1,9 @@
 const { request } = require("../../utils/request");
 
 const PIE_COLORS = ["#3949ab", "#00897b", "#f9a825", "#d81b60", "#5e35b1", "#039be5", "#7cb342", "#fb8c00", "#6d4c41"];
+const CHART = { width: 320, height: 260, cx: 160, cy: 118, outer: 76, inner: 48 };
+
+let pieSegments = [];
 
 function pad(n) {
   return String(n).padStart(2, "0");
@@ -86,6 +89,9 @@ Page({
     selectedDistrictId: 0,
     selectedDistrictName: "",
     typeStats: [],
+    selectedTypeName: "",
+    selectedTypeHours: "",
+    selectedTypePercent: 0,
     orgRows: [],
     selectedOrgId: 0,
     selectedOrgName: "",
@@ -170,7 +176,9 @@ Page({
         }),
       });
     } catch (e) {
-      if (Number(districtId) !== 0) throw e;
+      if (Number(districtId) !== 0) {
+        throw e;
+      }
     }
     if (Number(districtId) === 0 && !(types || []).some((r) => Number(r.total_minutes || 0) > 0)) {
       types = await this.loadCitywideTypesFallback();
@@ -204,6 +212,9 @@ Page({
     const district = this.data.districts.find((d) => Number(d.district_id) === Number(districtId));
     this.setData({
       typeStats,
+      selectedTypeName: "",
+      selectedTypeHours: "",
+      selectedTypePercent: 0,
       orgRows,
       totalMinutes: district ? district.total_minutes : total,
       totalMinutesText: formatHours(district ? district.total_minutes : total),
@@ -239,37 +250,92 @@ Page({
   drawPie() {
     const rows = this.data.typeStats;
     const ctx = wx.createCanvasContext("typePie", this);
-    ctx.clearRect(0, 0, 320, 240);
+    ctx.clearRect(0, 0, CHART.width, CHART.height);
     const total = rows.reduce((s, r) => s + Number(r.total_minutes || 0), 0);
-    const cx = 160;
-    const cy = 112;
-    const radius = 82;
+    pieSegments = [];
     if (!total) {
       ctx.setFillStyle("#999");
       ctx.setFontSize(14);
-      ctx.fillText("暂无时长数据", 116, 116);
+      ctx.fillText("暂无时长数据", 116, 124);
       ctx.draw();
       return;
     }
     let start = -Math.PI / 2;
     rows.forEach((r) => {
       const angle = (Number(r.total_minutes || 0) / total) * Math.PI * 2;
+      const end = start + angle;
+      const outerStartX = CHART.cx + Math.cos(start) * CHART.outer;
+      const outerStartY = CHART.cy + Math.sin(start) * CHART.outer;
+      const innerEndX = CHART.cx + Math.cos(end) * CHART.inner;
+      const innerEndY = CHART.cy + Math.sin(end) * CHART.inner;
       ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, radius, start, start + angle);
+      ctx.moveTo(outerStartX, outerStartY);
+      ctx.arc(CHART.cx, CHART.cy, CHART.outer, start, end);
+      ctx.lineTo(innerEndX, innerEndY);
+      ctx.arc(CHART.cx, CHART.cy, CHART.inner, end, start, true);
       ctx.closePath();
       ctx.setFillStyle(r.color);
       ctx.fill();
-      start += angle;
+
+      const mid = start + angle / 2;
+      const sx = CHART.cx + Math.cos(mid) * (CHART.outer + 2);
+      const sy = CHART.cy + Math.sin(mid) * (CHART.outer + 2);
+      const mx = CHART.cx + Math.cos(mid) * (CHART.outer + 16);
+      const my = CHART.cy + Math.sin(mid) * (CHART.outer + 16);
+      const right = Math.cos(mid) >= 0;
+      const ex = mx + (right ? 24 : -24);
+      ctx.beginPath();
+      ctx.setLineWidth(1);
+      ctx.setStrokeStyle(r.color);
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(mx, my);
+      ctx.lineTo(ex, my);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(ex, my, 2, 0, Math.PI * 2);
+      ctx.setFillStyle(r.color);
+      ctx.fill();
+      ctx.setFillStyle("#333");
+      ctx.setFontSize(10);
+      ctx.setTextAlign(right ? "left" : "right");
+      ctx.fillText(r.org_type_name, ex + (right ? 5 : -5), my - 2);
+      ctx.setFillStyle("#777");
+      ctx.fillText(`${r.percent}%`, ex + (right ? 5 : -5), my + 12);
+
+      pieSegments.push({
+        start,
+        end,
+        row: r,
+      });
+      start = end;
     });
-    ctx.beginPath();
-    ctx.arc(cx, cy, 42, 0, Math.PI * 2);
-    ctx.setFillStyle("#fff");
-    ctx.fill();
     ctx.setFillStyle("#1a237e");
-    ctx.setFontSize(13);
-    ctx.fillText("类型占比", 134, 116);
+    ctx.setTextAlign("center");
+    ctx.setFontSize(14);
+    ctx.fillText("类型占比", CHART.cx, CHART.cy - 6);
+    ctx.setFillStyle("#777");
+    ctx.setFontSize(11);
+    ctx.fillText(formatHours(total), CHART.cx, CHART.cy + 12);
     ctx.draw();
+  },
+
+  onPieTap(e) {
+    const touch = e.detail || {};
+    const x = Number(touch.x);
+    const y = Number(touch.y);
+    const dx = x - CHART.cx;
+    const dy = y - CHART.cy;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance < CHART.inner || distance > CHART.outer || !pieSegments.length) return;
+    let angle = Math.atan2(dy, dx);
+    if (angle < -Math.PI / 2) angle += Math.PI * 2;
+    const hit = pieSegments.find((seg) => angle >= seg.start && angle <= seg.end);
+    if (!hit) return;
+    this.setData({
+      selectedTypeName: hit.row.org_type_name,
+      selectedTypeHours: hit.row.total_minutes_text,
+      selectedTypePercent: hit.row.percent,
+    });
   },
 
   async onPeriodMode(e) {

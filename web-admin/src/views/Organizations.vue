@@ -47,7 +47,7 @@
         </el-form-item>
         <el-form-item label="类型" required>
           <el-select v-model="form.org_type" style="width: 100%">
-            <el-option v-for="t in orgTypes" :key="t.value" :label="t.label" :value="t.value" />
+            <el-option v-for="t in orgTypes" :key="t.code" :label="t.name" :value="t.code" />
           </el-select>
         </el-form-item>
         <el-form-item label="所属大队" required>
@@ -92,17 +92,7 @@ const keyword = ref("");
 const filterDistrict = ref();
 const dialogVisible = ref(false);
 const editing = ref(null);
-const orgTypes = [
-  { value: "emergency", label: "应急" },
-  { value: "education", label: "教育" },
-  { value: "civil_affairs", label: "民政" },
-  { value: "culture_tourism", label: "文旅" },
-  { value: "health", label: "卫建" },
-  { value: "commerce", label: "商务" },
-  { value: "industry_agriculture", label: "农业农村" },
-  { value: "development_reform", label: "发改" },
-  { value: "other_department", label: "其他部门" },
-];
+const orgTypes = ref([]);
 
 const form = reactive({
   name: "",
@@ -121,13 +111,18 @@ function districtName(id) {
   return districts.value.find((d) => d.id === id)?.name || id;
 }
 function orgTypeName(value) {
-  return orgTypes.find((t) => t.value === value)?.label || "其他部门";
+  return orgTypes.value.find((t) => t.code === value)?.name || value || "其他部门";
 }
 
 async function loadMeta() {
-  const [b, d] = await Promise.all([http.get("/api/admin/brigades"), http.get("/api/admin/districts")]);
+  const [b, d, t] = await Promise.all([
+    http.get("/api/admin/brigades"),
+    http.get("/api/admin/districts"),
+    http.get("/api/admin/org-types"),
+  ]);
   brigades.value = b.data;
   districts.value = d.data;
+  orgTypes.value = t.data || [];
 }
 
 async function load() {
@@ -160,7 +155,7 @@ function openDialog(row) {
   } else {
     Object.assign(form, {
       name: "",
-      org_type: "other_department",
+      org_type: orgTypes.value[0]?.code || "other_department",
       brigade_id: brigades.value[0]?.id ?? null,
       district_id: districts.value[0]?.id ?? null,
       contact_name: "",

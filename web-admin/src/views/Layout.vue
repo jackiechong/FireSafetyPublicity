@@ -8,6 +8,7 @@
         <el-menu-item index="/persons">人员管理</el-menu-item>
         <el-menu-item index="/stats">统计数据</el-menu-item>
         <el-menu-item v-if="role === 'detachment'" index="/accounts">账号权限</el-menu-item>
+        <el-menu-item v-if="role === 'detachment'" index="/dicts">字典配置</el-menu-item>
         <el-menu-item index="/m">手机看板</el-menu-item>
       </el-menu>
       <div class="foot">

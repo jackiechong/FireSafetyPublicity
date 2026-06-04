@@ -130,22 +130,10 @@ const qrcodeOpen = ref(false);
 const qrcodeData = ref(null);
 const qrCanvas = ref(null);
 const qrcodeUrl = ref("");
-const orgTypeLabels = {
-  emergency: "应急",
-  education: "教育",
-  civil_affairs: "民政",
-  culture_tourism: "文旅",
-  health: "卫建",
-  commerce: "商务",
-  industry_agriculture: "农业农村",
-  development_reform: "发改",
-  other_department: "其他部门",
-  department: "其他部门",
-  enterprise: "其他部门",
-};
+const orgTypes = ref([]);
 
 function orgTypeName(value) {
-  return orgTypeLabels[value] || "其他部门";
+  return orgTypes.value.find((t) => t.code === value)?.name || value || "其他部门";
 }
 
 const universalLoginDisplay = computed(() => {
@@ -184,14 +172,16 @@ function orgName(id) {
 
 async function loadInitial() {
   try {
-    const [meRes, distRes, orgRes] = await Promise.all([
+    const [meRes, distRes, orgRes, typeRes] = await Promise.all([
       http.get("/api/admin/me"),
       http.get("/api/admin/districts"),
       http.get("/api/admin/organizations"),
+      http.get("/api/admin/org-types"),
     ]);
     me.value = meRes.data;
     districts.value = distRes.data;
     orgs.value = orgRes.data;
+    orgTypes.value = typeRes.data || [];
   } catch (e) {
     console.error(e);
   }

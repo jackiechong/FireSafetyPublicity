@@ -13,19 +13,21 @@
   color: #2e7d32;
   font-size: 26rpx;
 }
-.section-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 24rpx 32rpx 8rpx;
-}
-.section-title,
-.identity-bind {
-  font-weight: 600;
-  color: #1a237e;
-}
 .stats-module {
   margin-top: 12rpx;
+}
+.join-training-btn {
+  width: 560rpx;
+  margin: 28rpx auto 24rpx;
+  border-radius: 999rpx;
+  background: #1a237e;
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 700;
+  box-shadow: 0 10rpx 24rpx rgba(26, 35, 126, 0.22);
+}
+.join-training-btn::after {
+  border: 0;
 }
 .stats-title {
   font-size: 30rpx;
