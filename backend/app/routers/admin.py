@@ -1,8 +1,11 @@
 import secrets
+import io
+import zipfile
 from datetime import datetime, timedelta
+from xml.etree import ElementTree as ET
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -16,12 +19,14 @@ from app.models import (
     Brigade,
     District,
     JobTitleOption,
+    KnowledgeArticle,
     Organization,
     OrgType,
     OrgTypeOption,
     Person,
     TrainingAttendance,
     TrainingSession,
+    TrainingTopicOption,
 )
 from app.schemas import (
     AdminAccountCreate,
@@ -41,6 +46,9 @@ from app.schemas import (
     DictionaryOptionOut,
     JobTitleOptionCreate,
     JobTitleOptionUpdate,
+    KnowledgeArticleCreate,
+    KnowledgeArticleOut,
+    KnowledgeArticleUpdate,
     OrganizationCreate,
     OrganizationOut,
     OrganizationUpdate,
@@ -49,15 +57,21 @@ from app.schemas import (
     QuickTrainingCreate,
     QuickTrainingOut,
     StatsDistrictItem,
+    StatsJobTitleSummary,
+    StatsOrgCompletionItem,
     StatsOrgInDistrictItem,
     StatsPersonItem,
     StatsSearchItem,
+    StatsTopicSummaryItem,
     StatsTypeInDistrictItem,
+    StatsTrainingSummaryItem,
     SuggestItem,
     Token,
     TrainingSessionCreate,
     TrainingSessionOut,
     TrainingSessionPatch,
+    TrainingTopicOptionCreate,
+    TrainingTopicOptionUpdate,
 )
 from app.config import settings
 from app.security import create_access_token, hash_password, verify_password
@@ -100,6 +114,118 @@ def _slug_code(name: str) -> str:
     raw = "".join(ch.lower() if ch.isalnum() else "_" for ch in name.strip())
     raw = "_".join(part for part in raw.split("_") if part)
     return raw[:48] or f"custom_{secrets.randbelow(1_000_000):06d}"
+
+
+def _apply_time_range(query, start: Optional[datetime], end: Optional[datetime]):
+    if start:
+        query = query.filter(TrainingSession.start_at >= start)
+    if end:
+        query = query.filter(TrainingSession.start_at < end)
+    return query
+
+
+def _xml_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M")
+    return str(value)
+
+
+def _col_name(index: int) -> str:
+    name = ""
+    while index:
+        index, rem = divmod(index - 1, 26)
+        name = chr(65 + rem) + name
+    return name
+
+
+def _xlsx_response(filename: str, headers: list[str], rows: list[list]) -> Response:
+    sheet_rows = [headers] + rows
+    xml_rows = []
+    for r_idx, row in enumerate(sheet_rows, start=1):
+        cells = []
+        for c_idx, value in enumerate(row, start=1):
+            ref = f"{_col_name(c_idx)}{r_idx}"
+            text = (
+                _xml_text(value)
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+            cells.append(f'<c r="{ref}" t="inlineStr"><is><t>{text}</t></is></c>')
+        xml_rows.append(f'<row r="{r_idx}">{"".join(cells)}</row>')
+    sheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'<sheetData>{"".join(xml_rows)}</sheetData></worksheet>'
+    )
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '</Types>'
+    )
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        '</Relationships>'
+    )
+    workbook = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    )
+    wb_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        '</Relationships>'
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types)
+        zf.writestr("_rels/.rels", rels)
+        zf.writestr("xl/workbook.xml", workbook)
+        zf.writestr("xl/_rels/workbook.xml.rels", wb_rels)
+        zf.writestr("xl/worksheets/sheet1.xml", sheet)
+    quoted = filename.encode("utf-8").decode("latin1", errors="ignore")
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{quoted}"'},
+    )
+
+
+def _read_xlsx_rows(data: bytes) -> list[list[str]]:
+    ns = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        shared: list[str] = []
+        if "xl/sharedStrings.xml" in zf.namelist():
+            root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+            for si in root.findall("x:si", ns):
+                shared.append("".join(t.text or "" for t in si.findall(".//x:t", ns)))
+        root = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
+    rows: list[list[str]] = []
+    for row in root.findall(".//x:row", ns):
+        values: list[str] = []
+        for cell in row.findall("x:c", ns):
+            ctype = cell.attrib.get("t")
+            if ctype == "inlineStr":
+                values.append("".join(t.text or "" for t in cell.findall(".//x:t", ns)).strip())
+            else:
+                v = cell.find("x:v", ns)
+                raw = (v.text or "") if v is not None else ""
+                if ctype == "s" and raw.isdigit() and int(raw) < len(shared):
+                    raw = shared[int(raw)]
+                values.append(raw.strip())
+        rows.append(values)
+    return rows
 
 
 @router.post("/login", response_model=Token)
@@ -287,6 +413,136 @@ def delete_job_title_option(
     db.commit()
 
 
+@router.get("/training-topics", response_model=List[DictionaryOptionOut])
+def list_training_topics(
+    _: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    include_inactive: bool = False,
+):
+    q = db.query(TrainingTopicOption)
+    if not include_inactive:
+        q = q.filter(TrainingTopicOption.is_active.is_(True))
+    rows = q.order_by(TrainingTopicOption.sort_order, TrainingTopicOption.id).all()
+    return [DictionaryOptionOut(id=o.id, name=o.name, sort_order=o.sort_order, is_active=o.is_active) for o in rows]
+
+
+@router.post("/training-topics", response_model=DictionaryOptionOut)
+def create_training_topic(
+    body: TrainingTopicOptionCreate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    name = body.name.strip()
+    if db.query(TrainingTopicOption).filter(TrainingTopicOption.name == name).first():
+        raise HTTPException(400, "培训主题已存在")
+    row = TrainingTopicOption(name=name, sort_order=body.sort_order, is_active=body.is_active)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return DictionaryOptionOut(id=row.id, name=row.name, sort_order=row.sort_order, is_active=row.is_active)
+
+
+@router.patch("/training-topics/{item_id}", response_model=DictionaryOptionOut)
+def update_training_topic(
+    item_id: int,
+    body: TrainingTopicOptionUpdate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(TrainingTopicOption, item_id)
+    if not row:
+        raise HTTPException(404, "培训主题不存在")
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data and data["name"]:
+        name = data["name"].strip()
+        dup = db.query(TrainingTopicOption).filter(TrainingTopicOption.name == name, TrainingTopicOption.id != row.id).first()
+        if dup:
+            raise HTTPException(400, "培训主题已存在")
+        row.name = name
+    if "sort_order" in data:
+        row.sort_order = data["sort_order"]
+    if "is_active" in data:
+        row.is_active = data["is_active"]
+    db.commit()
+    db.refresh(row)
+    return DictionaryOptionOut(id=row.id, name=row.name, sort_order=row.sort_order, is_active=row.is_active)
+
+
+@router.delete("/training-topics/{item_id}", status_code=204)
+def delete_training_topic(
+    item_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(TrainingTopicOption, item_id)
+    if not row:
+        raise HTTPException(404, "培训主题不存在")
+    if db.query(TrainingSession).filter(TrainingSession.topic_id == row.id).first():
+        row.is_active = False
+    else:
+        db.delete(row)
+    db.commit()
+
+
+@router.get("/knowledge-articles", response_model=List[KnowledgeArticleOut])
+def list_knowledge_articles(
+    _: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    include_inactive: bool = False,
+    category: Optional[str] = None,
+):
+    q = db.query(KnowledgeArticle)
+    if not include_inactive:
+        q = q.filter(KnowledgeArticle.is_active.is_(True))
+    if category:
+        q = q.filter(KnowledgeArticle.category == category)
+    return q.order_by(KnowledgeArticle.category, KnowledgeArticle.sort_order, KnowledgeArticle.id).all()
+
+
+@router.post("/knowledge-articles", response_model=KnowledgeArticleOut)
+def create_knowledge_article(
+    body: KnowledgeArticleCreate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = KnowledgeArticle(**body.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/knowledge-articles/{article_id}", response_model=KnowledgeArticleOut)
+def update_knowledge_article(
+    article_id: int,
+    body: KnowledgeArticleUpdate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(KnowledgeArticle, article_id)
+    if not row:
+        raise HTTPException(404, "内容不存在")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(row, k, v)
+    row.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/knowledge-articles/{article_id}", status_code=204)
+def delete_knowledge_article(
+    article_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(KnowledgeArticle, article_id)
+    if not row:
+        raise HTTPException(404, "内容不存在")
+    db.delete(row)
+    db.commit()
+
+
 def _org_query(admin: AdminUser, db: Session):
     q = db.query(Organization)
     bid = brigade_filter_brigade_id(admin)
@@ -425,6 +681,11 @@ def create_training(
     org = db.get(Organization, body.organization_id)
     if not org or org.brigade_id != body.brigade_id:
         raise HTTPException(400, "单位与大队不匹配")
+    if body.topic_id and not db.query(TrainingTopicOption).filter(
+        TrainingTopicOption.id == body.topic_id,
+        TrainingTopicOption.is_active.is_(True),
+    ).first():
+        raise HTTPException(400, "培训主题不存在或已停用")
     data = body.model_dump()
     if data.get("end_at") is None and data.get("start_at") is not None:
         data["end_at"] = end_of_local_day_utc(data["start_at"])
@@ -451,10 +712,20 @@ def patch_training(
     data = body.model_dump(exclude_unset=True)
     if not data:
         return sess
+    if "topic_id" in data and data["topic_id"] and not db.query(TrainingTopicOption).filter(
+        TrainingTopicOption.id == data["topic_id"],
+        TrainingTopicOption.is_active.is_(True),
+    ).first():
+        raise HTTPException(400, "培训主题不存在或已停用")
     if "is_active" in data:
         sess.is_active = bool(data["is_active"])
         if not sess.is_active:
             sess.end_at = datetime.utcnow()
+    for key in ("title", "topic_id", "start_at", "end_at", "duration_minutes", "location", "remark"):
+        if key in data:
+            setattr(sess, key, data[key])
+    if "start_at" in data and "end_at" not in data:
+        sess.end_at = end_of_local_day_utc(sess.start_at)
     db.commit()
     db.refresh(sess)
     return sess
@@ -463,6 +734,7 @@ def patch_training(
 def _build_quick_training_out(s: TrainingSession, db: Session) -> QuickTrainingOut:
     org = db.get(Organization, s.organization_id)
     brigade = db.get(Brigade, s.brigade_id)
+    topic = db.get(TrainingTopicOption, s.topic_id) if s.topic_id else None
     cnt = db.query(TrainingAttendance).filter(TrainingAttendance.session_id == s.id).count()
     # 配置了公众号网页授权域名时，直接生成可在微信内点开的完整 URL
     # 未配置时退化为旧的 session_id=N，让前端 / 小程序自行拼接
@@ -478,6 +750,8 @@ def _build_quick_training_out(s: TrainingSession, db: Session) -> QuickTrainingO
     return QuickTrainingOut(
         session_id=s.id,
         title=s.title,
+        topic_id=s.topic_id,
+        topic_name=topic.name if topic else None,
         start_at=s.start_at,
         duration_minutes=s.duration_minutes,
         location=s.location,
@@ -503,9 +777,15 @@ def create_training_quick(
         raise HTTPException(404, "单位不存在")
     if admin.role == AdminRole.brigade and org.brigade_id != admin.brigade_id:
         raise HTTPException(403, "无权在该单位创建培训")
+    if body.topic_id and not db.query(TrainingTopicOption).filter(
+        TrainingTopicOption.id == body.topic_id,
+        TrainingTopicOption.is_active.is_(True),
+    ).first():
+        raise HTTPException(400, "培训主题不存在或已停用")
     start = body.start_at or datetime.utcnow()
     sess = TrainingSession(
         title=body.title.strip(),
+        topic_id=body.topic_id,
         brigade_id=org.brigade_id,
         organization_id=org.id,
         start_at=start,
@@ -913,6 +1193,287 @@ def stats_persons_by_organization(
         )
         for r in rows
     ]
+
+
+def _training_summary_query(admin: AdminUser, db: Session, start: Optional[datetime], end: Optional[datetime]):
+    bid = brigade_filter_brigade_id(admin)
+    q = (
+        db.query(
+            TrainingSession,
+            Organization.name.label("org_name"),
+            Brigade.name.label("brigade_name"),
+            TrainingTopicOption.name.label("topic_name"),
+            func.count(func.distinct(TrainingAttendance.person_id)).label("person_count"),
+        )
+        .select_from(TrainingSession)
+        .join(Organization, Organization.id == TrainingSession.organization_id)
+        .join(Brigade, Brigade.id == TrainingSession.brigade_id)
+        .outerjoin(TrainingTopicOption, TrainingTopicOption.id == TrainingSession.topic_id)
+        .outerjoin(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
+        .group_by(TrainingSession.id, Organization.name, Brigade.name, TrainingTopicOption.name)
+    )
+    if bid is not None:
+        q = q.filter(TrainingSession.brigade_id == bid)
+    return _apply_time_range(q, start, end)
+
+
+def _summary_item(row) -> StatsTrainingSummaryItem:
+    sess = row[0]
+    return StatsTrainingSummaryItem(
+        session_id=sess.id,
+        title=sess.title,
+        start_at=sess.start_at,
+        person_count=int(row.person_count or 0),
+        brigade_name=row.brigade_name or "",
+        organization_name=row.org_name or "",
+        topic_name=row.topic_name,
+    )
+
+
+@router.get("/stats/training-summary", response_model=List[StatsTrainingSummaryItem])
+def stats_training_summary(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    topic_id: Optional[int] = None,
+    job_title: Optional[str] = None,
+):
+    q = _training_summary_query(admin, db, start, end)
+    if topic_id is not None:
+        q = q.filter(TrainingSession.topic_id == topic_id)
+    if job_title:
+        q = q.join(Person, Person.id == TrainingAttendance.person_id).filter(Person.job_title == job_title)
+    rows = q.order_by(TrainingSession.start_at.desc()).limit(1000).all()
+    return [_summary_item(r) for r in rows]
+
+
+@router.get("/stats/by-job-title", response_model=StatsJobTitleSummary)
+def stats_by_job_title(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    job_title: str = Query(..., min_length=1),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+):
+    bid = brigade_filter_brigade_id(admin)
+    base = (
+        db.query(
+            District.id,
+            District.name,
+            func.count(func.distinct(Person.id)),
+        )
+        .select_from(TrainingAttendance)
+        .join(Person, Person.id == TrainingAttendance.person_id)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .join(Organization, Organization.id == TrainingSession.organization_id)
+        .join(District, District.id == Organization.district_id)
+        .filter(Person.job_title == job_title)
+    )
+    if bid is not None:
+        base = base.filter(TrainingSession.brigade_id == bid)
+    base = _apply_time_range(base, start, end)
+    rows = base.group_by(District.id, District.name).order_by(District.id).all()
+    trainings_q = _training_summary_query(admin, db, start, end).join(Person, Person.id == TrainingAttendance.person_id).filter(Person.job_title == job_title)
+    trainings = [_summary_item(r) for r in trainings_q.order_by(TrainingSession.start_at.desc()).limit(300).all()]
+    return StatsJobTitleSummary(
+        job_title=job_title,
+        total_person_count=sum(int(r[2] or 0) for r in rows),
+        district_counts=[{"district_id": r[0], "district_name": r[1], "person_count": int(r[2] or 0)} for r in rows],
+        trainings=trainings,
+    )
+
+
+@router.get("/stats/by-topic", response_model=List[StatsTopicSummaryItem])
+def stats_by_topic(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    topic_id: Optional[int] = None,
+):
+    bid = brigade_filter_brigade_id(admin)
+    q = (
+        db.query(
+            TrainingSession.topic_id,
+            func.coalesce(TrainingTopicOption.name, "未分类"),
+            func.count(func.distinct(TrainingAttendance.person_id)),
+        )
+        .select_from(TrainingSession)
+        .outerjoin(TrainingTopicOption, TrainingTopicOption.id == TrainingSession.topic_id)
+        .outerjoin(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
+        .group_by(TrainingSession.topic_id, TrainingTopicOption.name)
+    )
+    if bid is not None:
+        q = q.filter(TrainingSession.brigade_id == bid)
+    if topic_id is not None:
+        q = q.filter(TrainingSession.topic_id == topic_id)
+    q = _apply_time_range(q, start, end)
+    rows = q.all()
+    out: list[StatsTopicSummaryItem] = []
+    for tid, name, count in rows:
+        tq = _training_summary_query(admin, db, start, end)
+        tq = tq.filter(TrainingSession.topic_id == tid) if tid else tq.filter(TrainingSession.topic_id.is_(None))
+        trainings = [_summary_item(r) for r in tq.order_by(TrainingSession.start_at.desc()).limit(300).all()]
+        brigades = sorted({t.brigade_name for t in trainings if t.brigade_name})
+        out.append(StatsTopicSummaryItem(
+            topic_id=tid,
+            topic_name=name or "未分类",
+            person_count=int(count or 0),
+            trainings=trainings,
+            brigades=brigades,
+        ))
+    return out
+
+
+@router.get("/stats/org-completion", response_model=List[StatsOrgCompletionItem])
+def stats_org_completion(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    organization_id: int = Query(..., ge=1),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+):
+    org = db.get(Organization, organization_id)
+    if not org:
+        raise HTTPException(404, "单位不存在")
+    if admin.role == AdminRole.brigade and org.brigade_id != admin.brigade_id:
+        raise HTTPException(403, "无权查看该单位")
+    registered = (
+        db.query(Person.job_title, func.count(Person.id))
+        .filter(Person.organization_id == organization_id, Person.job_title.isnot(None), Person.job_title != "")
+        .group_by(Person.job_title)
+        .all()
+    )
+    out: list[StatsOrgCompletionItem] = []
+    for title, total in registered:
+        q = (
+            db.query(func.count(func.distinct(TrainingAttendance.person_id)))
+            .select_from(TrainingAttendance)
+            .join(Person, Person.id == TrainingAttendance.person_id)
+            .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+            .filter(Person.organization_id == organization_id, Person.job_title == title)
+        )
+        q = _apply_time_range(q, start, end)
+        trained = int(q.scalar() or 0)
+        total_i = int(total or 0)
+        out.append(StatsOrgCompletionItem(
+            job_title=title or "未填",
+            registered_count=total_i,
+            trained_count=trained,
+            completion_percent=round((trained / total_i * 100) if total_i else 0, 1),
+        ))
+    return sorted(out, key=lambda x: x.job_title)
+
+
+@router.get("/exports/training-summary.xlsx")
+def export_training_summary(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    topic_id: Optional[int] = None,
+    job_title: Optional[str] = None,
+):
+    q = _training_summary_query(admin, db, start, end)
+    if topic_id is not None:
+        q = q.filter(TrainingSession.topic_id == topic_id)
+    if job_title:
+        q = q.join(Person, Person.id == TrainingAttendance.person_id).filter(Person.job_title == job_title)
+    rows = q.order_by(TrainingSession.start_at.desc()).limit(5000).all()
+    return _xlsx_response(
+        "training-summary.xlsx",
+        ["培训名称", "培训开展日期", "培训人数", "培训主题", "开展大队", "单位名称"],
+        [[r[0].title, r[0].start_at, int(r.person_count or 0), r.topic_name or "", r.brigade_name or "", r.org_name or ""] for r in rows],
+    )
+
+
+@router.get("/imports/person-template.xlsx")
+def download_person_import_template(_: Annotated[AdminUser, Depends(get_current_admin)]):
+    return _xlsx_response(
+        "person-import-template.xlsx",
+        ["姓名", "手机号", "区县", "单位名称", "职务/人员类别", "是否管理员"],
+        [["张三", "13800000000", "龙港区", "葫芦岛市消防救援支队", "消控室人员", "否"]],
+    )
+
+
+@router.post("/imports/persons")
+async def import_persons(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    data = await file.read()
+    try:
+        rows = _read_xlsx_rows(data)
+    except Exception as exc:
+        raise HTTPException(400, f"无法读取 Excel：{exc}")
+    if not rows:
+        raise HTTPException(400, "Excel 为空")
+    header = [x.strip() for x in rows[0]]
+    required = ["姓名", "手机号", "区县", "单位名称", "职务/人员类别"]
+    missing = [x for x in required if x not in header]
+    if missing:
+        raise HTTPException(400, f"缺少列：{', '.join(missing)}")
+    idx = {name: header.index(name) for name in header}
+    imported = 0
+    updated = 0
+    errors: list[str] = []
+    for line_no, row in enumerate(rows[1:], start=2):
+        def val(col: str) -> str:
+            pos = idx.get(col, -1)
+            return row[pos].strip() if 0 <= pos < len(row) else ""
+        name = val("姓名")
+        phone = val("手机号")
+        district_name = val("区县")
+        org_name = val("单位名称")
+        job_title = val("职务/人员类别")
+        is_admin_text = val("是否管理员")
+        if not any([name, phone, district_name, org_name, job_title]):
+            continue
+        if not name or not phone or not district_name or not org_name or not job_title:
+            errors.append(f"第{line_no}行：必填项不完整")
+            continue
+        if not phone.startswith("1") or len(phone) != 11 or not phone.isdigit():
+            errors.append(f"第{line_no}行：手机号格式错误")
+            continue
+        district = db.query(District).filter(District.name == district_name).first()
+        if not district:
+            errors.append(f"第{line_no}行：区县不存在")
+            continue
+        org = db.query(Organization).filter(Organization.district_id == district.id, Organization.name == org_name).first()
+        if not org:
+            errors.append(f"第{line_no}行：单位不存在")
+            continue
+        if admin.role == AdminRole.brigade and org.brigade_id != admin.brigade_id:
+            errors.append(f"第{line_no}行：无权导入该单位人员")
+            continue
+        person = db.query(Person).filter(Person.phone == phone).first()
+        if person:
+            person.name = name
+            person.district_id = district.id
+            person.organization_id = org.id
+            person.job_title = job_title
+            updated += 1
+        else:
+            person = Person(
+                openid=f"imported_{phone}",
+                name=name,
+                phone=phone,
+                district_id=district.id,
+                organization_id=org.id,
+                job_title=job_title,
+            )
+            db.add(person)
+            imported += 1
+        db.flush()
+        if admin.role == AdminRole.detachment and is_admin_text in ("是", "管理员", "1", "true", "TRUE"):
+            _sync_person_admin(person, org, True, db)
+    if errors:
+        db.rollback()
+        return {"ok": False, "imported": 0, "updated": 0, "errors": errors[:50]}
+    db.commit()
+    return {"ok": True, "imported": imported, "updated": updated, "errors": []}
 
 
 def _detachment_active_count(db: Session) -> int:

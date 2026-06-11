@@ -45,6 +45,8 @@ def sqlite_migrate_legacy_person_columns() -> None:
             cols = {r[1] for r in rows}
             if "is_active" not in cols:
                 conn.execute(text("ALTER TABLE training_sessions ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
+            if "topic_id" not in cols:
+                conn.execute(text("ALTER TABLE training_sessions ADD COLUMN topic_id INTEGER"))
 
         rows = conn.execute(text("PRAGMA table_info(admin_users)")).fetchall()
         if rows:
@@ -108,6 +110,32 @@ def sqlite_migrate_legacy_person_columns() -> None:
             )
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_job_title_options_is_active ON job_title_options(is_active)"))
+
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS training_topic_options (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR(128) NOT NULL UNIQUE,
+                sort_order INTEGER NOT NULL DEFAULT 100,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_training_topic_options_is_active ON training_topic_options(is_active)"))
+
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS knowledge_articles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category VARCHAR(64) NOT NULL,
+                title VARCHAR(200) NOT NULL,
+                content TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 100,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME,
+                updated_at DATETIME
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_knowledge_articles_category ON knowledge_articles(category)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_knowledge_articles_is_active ON knowledge_articles(is_active)"))
 
 
 def get_db():

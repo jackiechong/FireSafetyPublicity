@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <h2>字典配置</h2>
-    <p class="tip">支队管理员可维护小程序注册时使用的单位类型和职务/岗位。</p>
+    <p class="tip">支队管理员可维护小程序注册时使用的单位类型、职务/岗位，以及培训前选择的主题分类。</p>
 
     <section class="panel">
       <div class="panel-head">
@@ -21,6 +21,28 @@
           <template #default="{ row }">
             <el-button link type="primary" @click="openOrgType(row)">编辑</el-button>
             <el-button link type="danger" @click="removeOrgType(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h3>培训主题</h3>
+        <el-button type="primary" @click="openTopic()">新增主题</el-button>
+      </div>
+      <el-table :data="topics" border stripe v-loading="loading">
+        <el-table-column prop="name" label="名称" />
+        <el-table-column prop="sort_order" label="排序" width="90" />
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? "启用" : "停用" }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openTopic(row)">编辑</el-button>
+            <el-button link type="danger" @click="removeTopic(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -80,6 +102,7 @@ const loading = ref(false);
 const saving = ref(false);
 const orgTypes = ref([]);
 const jobTitles = ref([]);
+const topics = ref([]);
 const dialogVisible = ref(false);
 const kind = ref("org");
 const editing = ref(null);
@@ -87,18 +110,21 @@ const form = reactive({ name: "", code: "", sort_order: 100, is_active: true });
 
 const dialogTitle = computed(() => {
   const base = kind.value === "org" ? "单位类型" : "职务/岗位";
+  if (kind.value === "topic") return `${editing.value ? "编辑" : "新增"}培训主题`;
   return `${editing.value ? "编辑" : "新增"}${base}`;
 });
 
 async function load() {
   loading.value = true;
   try {
-    const [types, titles] = await Promise.all([
+    const [types, titles, topicRows] = await Promise.all([
       http.get("/api/admin/org-types", { params: { include_inactive: true } }),
       http.get("/api/admin/job-titles", { params: { include_inactive: true } }),
+      http.get("/api/admin/training-topics", { params: { include_inactive: true } }),
     ]);
     orgTypes.value = types.data || [];
     jobTitles.value = titles.data || [];
+    topics.value = topicRows.data || [];
   } finally {
     loading.value = false;
   }
@@ -111,6 +137,11 @@ function openOrgType(row) {
 
 function openJobTitle(row) {
   kind.value = "job";
+  open(row);
+}
+
+function openTopic(row) {
+  kind.value = "topic";
   open(row);
 }
 
@@ -132,7 +163,11 @@ async function submit() {
   }
   saving.value = true;
   try {
-    const url = kind.value === "org" ? "/api/admin/org-types" : "/api/admin/job-titles";
+    const url = kind.value === "org"
+      ? "/api/admin/org-types"
+      : kind.value === "topic"
+        ? "/api/admin/training-topics"
+        : "/api/admin/job-titles";
     const data = {
       name: form.name.trim(),
       sort_order: Number(form.sort_order || 100),
@@ -157,6 +192,10 @@ async function removeOrgType(row) {
 
 async function removeJobTitle(row) {
   await remove("/api/admin/job-titles", row, "职务");
+}
+
+async function removeTopic(row) {
+  await remove("/api/admin/training-topics", row, "培训主题");
 }
 
 async function remove(url, row, label) {

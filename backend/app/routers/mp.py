@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_person_token, resolve_mp_admin
-from app.models import Brigade, District, JobTitleOption, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession
+from app.models import Brigade, District, JobTitleOption, KnowledgeArticle, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession, TrainingTopicOption
 from app.schemas import (
     DistrictOut,
     MpActiveTrainingItem,
@@ -22,6 +22,7 @@ from app.schemas import (
     MpProfileIn,
     MpTrainingItem,
     DictionaryOptionOut,
+    KnowledgeArticleOut,
 )
 from app.security import create_access_token
 from app.training_activity import deactivate_expired_sessions, effective_end_utc, session_allows_checkin, today_bounds_utc
@@ -142,6 +143,27 @@ def mp_job_titles(
     return [DictionaryOptionOut(id=o.id, name=o.name, sort_order=o.sort_order, is_active=o.is_active) for o in rows]
 
 
+@router.get("/training-topics", response_model=List[DictionaryOptionOut])
+def mp_training_topics(
+    _: Annotated[Person, Depends(get_current_person_token)],
+    db: Session = Depends(get_db),
+):
+    rows = db.query(TrainingTopicOption).filter(TrainingTopicOption.is_active.is_(True)).order_by(TrainingTopicOption.sort_order, TrainingTopicOption.id).all()
+    return [DictionaryOptionOut(id=o.id, name=o.name, sort_order=o.sort_order, is_active=o.is_active) for o in rows]
+
+
+@router.get("/knowledge-articles", response_model=List[KnowledgeArticleOut])
+def mp_knowledge_articles(
+    _: Annotated[Person, Depends(get_current_person_token)],
+    db: Session = Depends(get_db),
+    category: str = Query(""),
+):
+    q = db.query(KnowledgeArticle).filter(KnowledgeArticle.is_active.is_(True))
+    if category:
+        q = q.filter(KnowledgeArticle.category == category)
+    return q.order_by(KnowledgeArticle.category, KnowledgeArticle.sort_order, KnowledgeArticle.id).all()
+
+
 @router.get("/organizations", response_model=List[MpOrgListItem])
 def mp_organizations(
     _: Annotated[Person, Depends(get_current_person_token)],
@@ -230,7 +252,19 @@ def mp_profile(
     db: Session = Depends(get_db),
 ):
     dup = db.query(Person).filter(Person.phone == body.phone, Person.id != person.id).first()
-    if dup:
+    if dup and (dup.openid or "").startswith("imported_"):
+        for att in db.query(TrainingAttendance).filter(TrainingAttendance.person_id == dup.id).all():
+            exists = db.query(TrainingAttendance).filter(
+                TrainingAttendance.session_id == att.session_id,
+                TrainingAttendance.person_id == person.id,
+            ).first()
+            if exists:
+                db.delete(att)
+            else:
+                att.person_id = person.id
+        db.delete(dup)
+        db.flush()
+    elif dup:
         raise HTTPException(400, "该手机号已被其他账号绑定")
 
     if not db.get(District, body.district_id):

@@ -105,6 +105,47 @@ class JobTitleOptionUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class TrainingTopicOptionCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    sort_order: int = Field(default=100, ge=0, le=9999)
+    is_active: bool = True
+
+
+class TrainingTopicOptionUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    sort_order: Optional[int] = Field(default=None, ge=0, le=9999)
+    is_active: Optional[bool] = None
+
+
+class KnowledgeArticleCreate(BaseModel):
+    category: str = Field(..., min_length=1, max_length=64)
+    title: str = Field(..., min_length=1, max_length=200)
+    content: str = Field(default="", max_length=20000)
+    sort_order: int = Field(default=100, ge=0, le=9999)
+    is_active: bool = True
+
+
+class KnowledgeArticleUpdate(BaseModel):
+    category: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    content: Optional[str] = Field(default=None, max_length=20000)
+    sort_order: Optional[int] = Field(default=None, ge=0, le=9999)
+    is_active: Optional[bool] = None
+
+
+class KnowledgeArticleOut(BaseModel):
+    id: int
+    category: str
+    title: str
+    content: str
+    sort_order: int = 100
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
 class BrigadeOut(BaseModel):
     id: int
     name: str
@@ -156,6 +197,7 @@ class OrganizationOut(BaseModel):
 
 class TrainingSessionCreate(BaseModel):
     title: str
+    topic_id: Optional[int] = None
     brigade_id: int
     organization_id: int
     start_at: datetime
@@ -168,11 +210,19 @@ class TrainingSessionCreate(BaseModel):
 
 class TrainingSessionPatch(BaseModel):
     is_active: Optional[bool] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=256)
+    topic_id: Optional[int] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    duration_minutes: Optional[int] = Field(default=None, ge=0)
+    location: Optional[str] = None
+    remark: Optional[str] = None
 
 
 class TrainingSessionOut(BaseModel):
     id: int
     title: str
+    topic_id: Optional[int] = None
     brigade_id: int
     organization_id: int
     start_at: datetime
@@ -199,6 +249,7 @@ class QuickTrainingCreate(BaseModel):
     duration_minutes: int = Field(default=60, ge=1, le=1440)
     location: Optional[str] = Field(default=None, max_length=200)
     start_at: Optional[datetime] = None
+    topic_id: Optional[int] = None
 
 
 class QuickTrainingOut(BaseModel):
@@ -303,6 +354,8 @@ class MpCheckinIn(BaseModel):
 class MpActiveTrainingItem(BaseModel):
     session_id: int
     title: str
+    topic_id: Optional[int] = None
+    topic_name: Optional[str] = None
     start_at: datetime
     duration_minutes: int
     location: Optional[str] = None
@@ -400,6 +453,38 @@ class StatsSearchItem(BaseModel):
     organization_id: Optional[int] = None
     district_id: Optional[int] = None
     person_id: Optional[int] = None
+
+
+class StatsTrainingSummaryItem(BaseModel):
+    session_id: int
+    title: str
+    start_at: datetime
+    person_count: int
+    brigade_name: str
+    organization_name: str
+    topic_name: Optional[str] = None
+
+
+class StatsJobTitleSummary(BaseModel):
+    job_title: str
+    total_person_count: int
+    district_counts: list[dict]
+    trainings: list[StatsTrainingSummaryItem]
+
+
+class StatsTopicSummaryItem(BaseModel):
+    topic_id: Optional[int] = None
+    topic_name: str
+    person_count: int
+    trainings: list[StatsTrainingSummaryItem]
+    brigades: list[str]
+
+
+class StatsOrgCompletionItem(BaseModel):
+    job_title: str
+    registered_count: int
+    trained_count: int
+    completion_percent: float
 
 
 class SuggestItem(BaseModel):

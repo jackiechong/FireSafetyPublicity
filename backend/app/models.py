@@ -56,6 +56,29 @@ class JobTitleOption(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class TrainingTopicOption(Base):
+    __tablename__ = "training_topic_options"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class KnowledgeArticle(Base):
+    __tablename__ = "knowledge_articles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AdminUser(Base):
     __tablename__ = "admin_users"
 
@@ -172,6 +195,7 @@ class TrainingSession(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(256))
+    topic_id: Mapped[int | None] = mapped_column(ForeignKey("training_topic_options.id"), nullable=True, index=True)
     brigade_id: Mapped[int] = mapped_column(ForeignKey("brigades.id"), index=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), index=True)
     start_at: Mapped[datetime] = mapped_column(DateTime)
@@ -183,6 +207,7 @@ class TrainingSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     organization = relationship("Organization", back_populates="trainings")
+    topic = relationship("TrainingTopicOption", foreign_keys=[topic_id])
     attendances = relationship("TrainingAttendance", back_populates="session", cascade="all, delete-orphan")
 
 

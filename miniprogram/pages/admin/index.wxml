@@ -23,6 +23,12 @@
         <view class="picker">{{orgLabels[orgIndex] || '请先选区县'}}</view>
       </picker>
     </view>
+    <view class="field">
+      <text class="label">培训主题</text>
+      <picker mode="selector" range="{{topicNames}}" value="{{topicIndex}}" bindchange="onTopicChange" disabled="{{!topicNames.length}}">
+        <view class="picker">{{topicNames[topicIndex] || '未分类'}}</view>
+      </picker>
+    </view>
     <view class="field row">
       <view class="half">
         <text class="label">时长（分钟）</text>

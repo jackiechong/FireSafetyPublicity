@@ -39,6 +39,49 @@
   font-size: 24rpx;
   color: #666;
 }
+.knowledge {
+  margin-top: 16rpx;
+}
+.knowledge-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10rpx;
+  margin-top: 16rpx;
+}
+.knowledge-tab {
+  background: #f3f6fb;
+  border-radius: 8rpx;
+  color: #455a64;
+  font-size: 24rpx;
+  padding: 14rpx 6rpx;
+  text-align: center;
+}
+.knowledge-tab.active {
+  background: #1a237e;
+  color: #fff;
+}
+.knowledge-empty {
+  color: #999;
+  font-size: 24rpx;
+  padding: 24rpx 0 8rpx;
+  text-align: center;
+}
+.knowledge-item {
+  border-top: 1rpx solid #eef1f5;
+  padding: 18rpx 0;
+}
+.knowledge-title {
+  color: #202124;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+.knowledge-content {
+  color: #555;
+  font-size: 24rpx;
+  line-height: 1.6;
+  margin-top: 8rpx;
+  white-space: pre-wrap;
+}
 .item .t {
   font-weight: 600;
   margin-bottom: 8rpx;

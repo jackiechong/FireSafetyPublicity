@@ -35,6 +35,10 @@ Page({
     orgList: [],
     orgLabels: [],
     orgIndex: 0,
+    topicList: [],
+    topicNames: [],
+    topicIndex: 0,
+    topicId: null,
     title: "",
     durationMinutes: "60",
     location: "",
@@ -69,7 +73,7 @@ Page({
       });
       return;
     }
-    await Promise.all([this.loadOrgTypes(), this.loadDistricts(), this.loadTrainings()]);
+    await Promise.all([this.loadOrgTypes(), this.loadTopics(), this.loadDistricts(), this.loadTrainings()]);
   },
 
   async loadOrgTypes() {
@@ -82,6 +86,20 @@ Page({
       this.setData({ orgTypeLabels: labels });
     } catch (e) {
       this.setData({ orgTypeLabels: FALLBACK_ORG_TYPE_LABELS });
+    }
+  },
+
+  async loadTopics() {
+    try {
+      const list = await request({ url: "/api/mp/training-topics" });
+      this.setData({
+        topicList: list || [],
+        topicNames: (list || []).map((x) => x.name),
+        topicIndex: 0,
+        topicId: list && list.length ? list[0].id : null,
+      });
+    } catch (e) {
+      this.setData({ topicList: [], topicNames: [], topicId: null });
     }
   },
 
@@ -133,6 +151,11 @@ Page({
   onOrgChange(e) {
     this.setData({ orgIndex: Number(e.detail.value) });
   },
+  onTopicChange(e) {
+    const idx = Number(e.detail.value);
+    const topic = this.data.topicList[idx];
+    this.setData({ topicIndex: idx, topicId: topic ? topic.id : null });
+  },
 
   onTitle(e) {
     this.setData({ title: e.detail.value });
@@ -145,7 +168,7 @@ Page({
   },
 
   async onCreate() {
-    const { title, orgList, orgIndex, durationMinutes, location } = this.data;
+    const { title, orgList, orgIndex, durationMinutes, location, topicId } = this.data;
     const org = orgList[orgIndex];
     if (!title.trim()) {
       wx.showToast({ title: "请输入标题", icon: "none" });
@@ -163,6 +186,7 @@ Page({
         data: {
           title: title.trim(),
           organization_id: org.id,
+          topic_id: topicId || undefined,
           duration_minutes: Number(durationMinutes) || 60,
           location: (location || "").trim() || undefined,
         },

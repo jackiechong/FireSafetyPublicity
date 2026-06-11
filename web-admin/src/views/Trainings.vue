@@ -6,6 +6,9 @@
     <el-table :data="rows" border stripe v-loading="loading" style="margin-top: 16px">
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="title" label="主题" min-width="160" />
+      <el-table-column label="主题分类" min-width="120">
+        <template #default="{ row }">{{ topicName(row.topic_id) }}</template>
+      </el-table-column>
       <el-table-column label="扫码" width="88" align="center">
         <template #default="{ row }">
           <el-switch
@@ -25,6 +28,7 @@
       <el-table-column prop="location" label="地点" min-width="120" />
       <el-table-column label="操作" width="160" fixed="right">
         <template #default="{ row }">
+          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link type="primary" @click="openAttendance(row)">添加参训人员</el-button>
         </template>
       </el-table-column>
@@ -34,6 +38,11 @@
       <el-form :model="createForm" label-width="100px">
         <el-form-item label="主题" required>
           <el-input v-model="createForm.title" />
+        </el-form-item>
+        <el-form-item label="主题分类">
+          <el-select v-model="createForm.topic_id" clearable style="width: 100%">
+            <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
+          </el-select>
         </el-form-item>
         <el-form-item label="大队" required>
           <el-select v-model="createForm.brigade_id" style="width: 100%">
@@ -76,6 +85,38 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="editVisible" title="编辑培训" width="560px" destroy-on-close>
+      <el-form label-width="100px">
+        <el-form-item label="培训名称" required>
+          <el-input v-model="editForm.title" />
+        </el-form-item>
+        <el-form-item label="主题分类">
+          <el-select v-model="editForm.topic_id" clearable style="width: 100%">
+            <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="开始时间" required>
+          <el-date-picker v-model="editForm.start_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="结束时间">
+          <el-date-picker v-model="editForm.end_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" clearable style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="时长(分钟)">
+          <el-input-number v-model="editForm.duration_minutes" :min="0" />
+        </el-form-item>
+        <el-form-item label="地点">
+          <el-input v-model="editForm.location" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="editForm.remark" type="textarea" rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editSaving" @click="submitEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="attVisible" title="添加参训人员（手机号需已在小程序实名）" width="440px">
       <el-form label-width="100px">
         <el-form-item label="培训ID">
@@ -105,9 +146,11 @@ const loading = ref(false);
 const saving = ref(false);
 const rows = ref([]);
 const brigades = ref([]);
+const topics = ref([]);
 const createVisible = ref(false);
 const createForm = reactive({
   title: "",
+  topic_id: null,
   brigade_id: null,
   organization_id: null,
   start_at: "",
@@ -125,9 +168,25 @@ const attSaving = ref(false);
 const currentSession = ref(null);
 const attPhone = ref("");
 const attDuration = ref(0);
+const editVisible = ref(false);
+const editSaving = ref(false);
+const editing = ref(null);
+const editForm = reactive({
+  title: "",
+  topic_id: null,
+  start_at: "",
+  end_at: "",
+  duration_minutes: 60,
+  location: "",
+  remark: "",
+});
 
 function brigadeName(id) {
   return brigades.value.find((b) => b.id === id)?.name || id;
+}
+
+function topicName(id) {
+  return topics.value.find((t) => t.id === id)?.name || "未分类";
 }
 
 function formatTime(iso) {
@@ -174,6 +233,7 @@ async function remoteOrg(q) {
 function openCreate() {
   Object.assign(createForm, {
     title: "",
+    topic_id: null,
     brigade_id: brigades.value[0]?.id ?? null,
     organization_id: null,
     start_at: new Date().toISOString().slice(0, 19),
@@ -201,6 +261,46 @@ async function submitCreate() {
     console.error(e);
   } finally {
     saving.value = false;
+  }
+}
+
+function openEdit(row) {
+  editing.value = row;
+  Object.assign(editForm, {
+    title: row.title || "",
+    topic_id: row.topic_id || null,
+    start_at: row.start_at ? row.start_at.slice(0, 19) : "",
+    end_at: row.end_at ? row.end_at.slice(0, 19) : "",
+    duration_minutes: row.duration_minutes || 0,
+    location: row.location || "",
+    remark: row.remark || "",
+  });
+  editVisible.value = true;
+}
+
+async function submitEdit() {
+  if (!editing.value || !editForm.title.trim() || !editForm.start_at) {
+    ElMessage.warning("请填写培训名称和开始时间");
+    return;
+  }
+  editSaving.value = true;
+  try {
+    await http.patch(`/api/admin/trainings/${editing.value.id}`, {
+      title: editForm.title.trim(),
+      topic_id: editForm.topic_id || null,
+      start_at: editForm.start_at,
+      end_at: editForm.end_at || null,
+      duration_minutes: Number(editForm.duration_minutes || 0),
+      location: editForm.location || null,
+      remark: editForm.remark || null,
+    });
+    ElMessage.success("已保存");
+    editVisible.value = false;
+    await load();
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || "保存失败");
+  } finally {
+    editSaving.value = false;
   }
 }
 
@@ -232,8 +332,12 @@ async function submitAttendance() {
 }
 
 onMounted(async () => {
-  const { data } = await http.get("/api/admin/brigades");
-  brigades.value = data;
+  const [b, t] = await Promise.all([
+    http.get("/api/admin/brigades"),
+    http.get("/api/admin/training-topics"),
+  ]);
+  brigades.value = b.data;
+  topics.value = t.data || [];
   await load();
 });
 </script>

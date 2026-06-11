@@ -13,12 +13,14 @@ from app.models import (
     Brigade,
     District,
     JobTitleOption,
+    KnowledgeArticle,
     Organization,
     OrgType,
     OrgTypeOption,
     Person,
     TrainingAttendance,
     TrainingSession,
+    TrainingTopicOption,
 )
 from app.security import hash_password
 
@@ -79,6 +81,15 @@ DEFAULT_ORG_TYPES: list[tuple[str, str]] = [
 ]
 
 DEFAULT_JOB_TITLES = ["消防安全责任人", "消防安全管理人", "安全员", "值班长", "员工", "主管", "电工"]
+
+DEFAULT_TRAINING_TOPICS = ["消防负责人培训", "消控室人员培训", "员工消防培训", "灭火器材使用培训", "法律法规培训"]
+
+DEFAULT_KNOWLEDGE_CATEGORIES: list[tuple[str, str]] = [
+    ("knowledge", "消防知识"),
+    ("law", "法律法规"),
+    ("system", "制度"),
+    ("equipment", "器材使用"),
+]
 
 DEMO_ORG_SPECS: list[tuple[str, OrgType, str, str]] = [
     ("【测试】连山商业综合体", OrgType.commerce, "LS", "连山区"),
@@ -237,6 +248,21 @@ def _ensure_dictionary_options(db: Session) -> None:
     for idx, name in enumerate(DEFAULT_JOB_TITLES, start=1):
         if name not in existing_titles:
             db.add(JobTitleOption(name=name, sort_order=idx, is_active=True))
+            changed = True
+    existing_topics = {x.name for x in db.query(TrainingTopicOption).all()}
+    for idx, name in enumerate(DEFAULT_TRAINING_TOPICS, start=1):
+        if name not in existing_topics:
+            db.add(TrainingTopicOption(name=name, sort_order=idx, is_active=True))
+            changed = True
+    existing_articles = {
+        (x.category, x.title) for x in db.query(KnowledgeArticle).filter(KnowledgeArticle.remark.is_(None)).all()
+    } if hasattr(KnowledgeArticle, "remark") else set()
+    for idx, (code, label) in enumerate(DEFAULT_KNOWLEDGE_CATEGORIES, start=1):
+        title = f"{label}栏目"
+        if (code, title) not in existing_articles and not db.query(KnowledgeArticle).filter(
+            KnowledgeArticle.category == code, KnowledgeArticle.title == title
+        ).first():
+            db.add(KnowledgeArticle(category=code, title=title, content="请在后台编辑本栏目内容。", sort_order=idx, is_active=True))
             changed = True
     if changed:
         db.commit()
