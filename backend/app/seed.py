@@ -478,7 +478,7 @@ def _ensure_fake_padding_for_zero_districts(db: Session) -> None:
         )
         db.add(sess)
         db.flush()
-        db.add(TrainingAttendance(session_id=sess.id, person_id=person.id, duration_minutes=dur))
+        db.add(TrainingAttendance(session_id=sess.id, person_id=person.id, organization_id=person.organization_id, duration_minutes=dur))
         changed = True
     if changed:
         db.commit()
@@ -689,7 +689,7 @@ def _seed_jianchang_fake_bulk(db: Session) -> None:
             )
             if exists:
                 continue
-            db.add(TrainingAttendance(session_id=sess.id, person_id=p.id, duration_minutes=dur))
+            db.add(TrainingAttendance(session_id=sess.id, person_id=p.id, organization_id=p.organization_id, duration_minutes=dur))
 
     db.commit()
 
@@ -727,7 +727,7 @@ def _ensure_demo_attendances(db: Session) -> None:
         chosen = random.sample(candidates, k) if n >= k else list(candidates)
         dur = int(s.duration_minutes or 60)
         for p in chosen:
-            db.add(TrainingAttendance(session_id=s.id, person_id=p.id, duration_minutes=dur))
+            db.add(TrainingAttendance(session_id=s.id, person_id=p.id, organization_id=p.organization_id, duration_minutes=dur))
     db.commit()
 
 

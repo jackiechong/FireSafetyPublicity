@@ -42,6 +42,27 @@ def sqlite_migrate_legacy_person_columns() -> None:
             cols = {r[1] for r in rows}
             if "checked_in_at" not in cols:
                 conn.execute(text("ALTER TABLE training_attendances ADD COLUMN checked_in_at DATETIME"))
+            if "organization_id" not in cols:
+                conn.execute(text("ALTER TABLE training_attendances ADD COLUMN organization_id INTEGER"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_training_attendances_organization_id ON training_attendances(organization_id)"))
+            conn.execute(text("""
+                UPDATE training_attendances
+                SET organization_id = (
+                    SELECT persons.organization_id
+                    FROM persons
+                    WHERE persons.id = training_attendances.person_id
+                )
+                WHERE organization_id IS NULL
+            """))
+            conn.execute(text("""
+                UPDATE training_attendances
+                SET organization_id = (
+                    SELECT training_sessions.organization_id
+                    FROM training_sessions
+                    WHERE training_sessions.id = training_attendances.session_id
+                )
+                WHERE organization_id IS NULL
+            """))
 
         rows = conn.execute(text("PRAGMA table_info(training_sessions)")).fetchall()
         if rows:

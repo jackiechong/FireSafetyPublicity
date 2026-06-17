@@ -212,7 +212,7 @@ class TrainingSessionCreate(BaseModel):
     title: str
     topic_id: Optional[int] = None
     brigade_id: int
-    organization_id: int
+    organization_id: Optional[int] = None
     start_at: datetime
     end_at: Optional[datetime] = None
     duration_minutes: int = Field(ge=0)

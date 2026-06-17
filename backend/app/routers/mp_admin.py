@@ -11,7 +11,7 @@ from app.database import get_db
 from app.deps import brigade_filter_brigade_id, get_current_mp_admin, get_current_person_token
 from app.models import AdminRole, AdminUser, AdminWxBindCode, AdminWxBinding, Brigade, District, Organization, Person
 from app.models import TrainingAttendance, TrainingSession
-from app.routers.admin import _build_quick_training_out, _org_type_name, create_training_quick
+from app.routers.admin import _attendance_org_id, _build_quick_training_out, _org_type_name, create_training_quick
 from app.routers.admin import stats_by_district, stats_orgs_by_district, stats_persons_by_organization, stats_types_by_district
 from app.schemas import (
     DistrictOut,
@@ -182,6 +182,7 @@ def _mp_admin_stats_types_citywide(
         q_orgs = q_orgs.filter(Organization.brigade_id == bid)
     orgs = q_orgs.all()
     org_type_by_id = {o.id: o.org_type for o in orgs}
+    att_org_id = _attendance_org_id()
     counts: dict[str, int] = {}
     for org in orgs:
         label = _org_type_name(org.org_type, db)
@@ -189,14 +190,14 @@ def _mp_admin_stats_types_citywide(
 
     q = (
         db.query(
-            TrainingSession.organization_id,
+            att_org_id,
             func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0),
             func.count(func.distinct(TrainingAttendance.person_id)),
         )
-        .select_from(TrainingSession)
-        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
-        .filter(TrainingSession.organization_id.in_(list(org_type_by_id.keys()) or [-1]))
-        .group_by(TrainingSession.organization_id)
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .filter(att_org_id.in_(list(org_type_by_id.keys()) or [-1]))
+        .group_by(att_org_id)
     )
     if start:
         q = q.filter(TrainingSession.start_at >= start)
@@ -233,14 +234,15 @@ def _mp_admin_stats_orgs_citywide(
     end: Optional[datetime] = None,
 ) -> list[StatsOrgInDistrictItem]:
     bid = brigade_filter_brigade_id(admin)
+    att_org_id = _attendance_org_id()
     sub_mins = (
         db.query(
-            TrainingSession.organization_id.label("oid"),
+            att_org_id.label("oid"),
             func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0).label("tm"),
         )
-        .select_from(TrainingSession)
-        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
-        .group_by(TrainingSession.organization_id)
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .group_by(att_org_id)
     )
     if start:
         sub_mins = sub_mins.filter(TrainingSession.start_at >= start)
@@ -250,12 +252,12 @@ def _mp_admin_stats_orgs_citywide(
 
     sub_pc = (
         db.query(
-            TrainingSession.organization_id.label("oid"),
+            att_org_id.label("oid"),
             func.count(func.distinct(TrainingAttendance.person_id)).label("pc"),
         )
-        .select_from(TrainingSession)
-        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
-        .group_by(TrainingSession.organization_id)
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .group_by(att_org_id)
     )
     if start:
         sub_pc = sub_pc.filter(TrainingSession.start_at >= start)
@@ -313,7 +315,7 @@ def mp_admin_stats_person_trainings(
     q = (
         db.query(TrainingAttendance, TrainingSession, Organization, District)
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
-        .join(Organization, Organization.id == TrainingSession.organization_id)
+        .join(Organization, Organization.id == _attendance_org_id())
         .join(District, District.id == Organization.district_id)
         .filter(TrainingAttendance.person_id == person_id)
     )

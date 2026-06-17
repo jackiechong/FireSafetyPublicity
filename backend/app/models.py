@@ -230,8 +230,10 @@ class TrainingAttendance(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("training_sessions.id"), index=True)
     person_id: Mapped[int] = mapped_column(ForeignKey("persons.id"), index=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
     checked_in_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     session = relationship("TrainingSession", back_populates="attendances")
     person = relationship("Person", back_populates="attendances")
+    organization = relationship("Organization", foreign_keys=[organization_id])

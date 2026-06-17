@@ -15,7 +15,6 @@
       <el-table-column label="培训主办单位" width="130">
         <template #default="{ row }">{{ brigadeName(row.brigade_id) }}</template>
       </el-table-column>
-      <el-table-column label="单位ID" width="80" prop="organization_id" />
       <el-table-column label="开始时间" width="170">
         <template #default="{ row }">{{ formatTime(row.start_at) }}</template>
       </el-table-column>
@@ -30,7 +29,7 @@
     </el-table>
 
     <el-dialog v-model="createVisible" title="登记培训" width="560px" destroy-on-close>
-      <el-form :model="createForm" label-width="100px">
+      <el-form :model="createForm" label-width="120px">
         <el-form-item label="主题" required>
           <el-input v-model="createForm.title" />
         </el-form-item>
@@ -42,20 +41,6 @@
         <el-form-item label="培训主办单位" required>
           <el-select v-model="createForm.brigade_id" style="width: 100%">
             <el-option v-for="b in brigades" :key="b.id" :label="b.name" :value="b.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="单位" required>
-          <el-select
-            v-model="createForm.organization_id"
-            filterable
-            remote
-            reserve-keyword
-            placeholder="输入关键词联想"
-            :remote-method="remoteOrg"
-            :loading="orgLoading"
-            style="width: 100%"
-          >
-            <el-option v-for="o in orgOptions" :key="o.id" :label="`${o.name}（${o.district_name}）`" :value="o.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="开始时间" required>
@@ -153,16 +138,12 @@ const createForm = reactive({
   title: "",
   topic_id: null,
   brigade_id: null,
-  organization_id: null,
   start_at: "",
   duration_minutes: 60,
   location: "",
   remark: "",
   is_active: true,
 });
-
-const orgOptions = ref([]);
-const orgLoading = ref(false);
 
 const attVisible = ref(false);
 const attSaving = ref(false);
@@ -207,39 +188,23 @@ async function load() {
   }
 }
 
-async function remoteOrg(q) {
-  if (!q) {
-    orgOptions.value = [];
-    return;
-  }
-  orgLoading.value = true;
-  try {
-    const { data } = await http.get("/api/admin/organizations/suggest", { params: { q, limit: 30 } });
-    orgOptions.value = data;
-  } finally {
-    orgLoading.value = false;
-  }
-}
-
 function openCreate() {
   Object.assign(createForm, {
     title: "",
     topic_id: null,
     brigade_id: brigades.value[0]?.id ?? null,
-    organization_id: null,
     start_at: new Date().toISOString().slice(0, 19),
     duration_minutes: 60,
     location: "",
     remark: "",
     is_active: true,
   });
-  orgOptions.value = [];
   createVisible.value = true;
 }
 
 async function submitCreate() {
-  if (!createForm.title.trim() || !createForm.organization_id) {
-    ElMessage.warning("请填写主题并选择单位");
+  if (!createForm.title.trim() || !createForm.brigade_id) {
+    ElMessage.warning("请填写主题并选择培训主办单位");
     return;
   }
   saving.value = true;

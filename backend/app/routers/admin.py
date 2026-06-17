@@ -136,6 +136,10 @@ def _apply_time_range(query, start: Optional[datetime], end: Optional[datetime])
     return query
 
 
+def _attendance_org_id():
+    return func.coalesce(TrainingAttendance.organization_id, TrainingSession.organization_id)
+
+
 def _xml_text(value) -> str:
     if value is None:
         return ""
@@ -758,6 +762,25 @@ def list_trainings(
     return q.order_by(TrainingSession.start_at.desc()).limit(500).all()
 
 
+def _default_training_organization(db: Session, brigade_id: int) -> Optional[Organization]:
+    brigade = db.get(Brigade, brigade_id)
+    if not brigade:
+        return None
+    if brigade.code == DETACHMENT_BRIGADE_CODE:
+        org = db.query(Organization).filter(Organization.name == "葫芦岛市消防救援支队").first()
+        if org:
+            return org
+    org = (
+        db.query(Organization)
+        .filter(Organization.brigade_id == brigade_id, Organization.remark == "SYSTEM_FIRE_BRIGADE")
+        .order_by(Organization.id)
+        .first()
+    )
+    if org:
+        return org
+    return db.query(Organization).filter(Organization.brigade_id == brigade_id).order_by(Organization.id).first()
+
+
 @router.post("/trainings", response_model=TrainingSessionOut)
 def create_training(
     body: TrainingSessionCreate,
@@ -766,7 +789,9 @@ def create_training(
 ):
     if admin.role == AdminRole.brigade and body.brigade_id != admin.brigade_id:
         raise HTTPException(403, "只能在本大队下创建培训")
-    org = db.get(Organization, body.organization_id)
+    org = db.get(Organization, body.organization_id) if body.organization_id else _default_training_organization(db, body.brigade_id)
+    if not org:
+        raise HTTPException(400, "未找到主办单位对应的系统单位")
     if not org or (org.brigade_id != body.brigade_id and not _is_detachment_brigade(db, body.brigade_id)):
         raise HTTPException(400, "单位与大队不匹配")
     if body.topic_id and not db.query(TrainingTopicOption).filter(
@@ -775,6 +800,7 @@ def create_training(
     ).first():
         raise HTTPException(400, "培训主题不存在或已停用")
     data = body.model_dump()
+    data["organization_id"] = org.id
     if data.get("end_at") is None and data.get("start_at") is not None:
         data["end_at"] = end_of_local_day_utc(data["start_at"])
     t = TrainingSession(**data)
@@ -970,7 +996,13 @@ def add_attendance(
     )
     if existing:
         raise HTTPException(400, "该人员已在本次培训名单中")
-    a = TrainingAttendance(session_id=session_id, person_id=person.id, duration_minutes=dur)
+    attendance_org_id = body.organization_id or person.organization_id or sess.organization_id
+    a = TrainingAttendance(
+        session_id=session_id,
+        person_id=person.id,
+        organization_id=attendance_org_id,
+        duration_minutes=dur,
+    )
     db.add(a)
     db.commit()
     return {"ok": True}
@@ -984,14 +1016,16 @@ def stats_by_district(
     end: Optional[datetime] = None,
 ):
     bid = brigade_filter_brigade_id(admin)
+    att_org_id = _attendance_org_id()
 
     q_sess = (
         db.query(
             Organization.district_id,
-            func.count(TrainingSession.id),
+            func.count(func.distinct(TrainingSession.id)),
         )
-        .select_from(TrainingSession)
-        .join(Organization, Organization.id == TrainingSession.organization_id)
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .join(Organization, Organization.id == att_org_id)
     )
     if bid is not None:
         q_sess = q_sess.filter(TrainingSession.brigade_id == bid)
@@ -1008,7 +1042,7 @@ def stats_by_district(
         )
         .select_from(TrainingAttendance)
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
-        .join(Organization, Organization.id == TrainingSession.organization_id)
+        .join(Organization, Organization.id == att_org_id)
     )
     if bid is not None:
         q_min = q_min.filter(TrainingSession.brigade_id == bid)
@@ -1089,15 +1123,16 @@ def stats_orgs_by_district(
     使用子查询汇总参训数据再与单位左连接，避免多表 outerjoin + group_by 在 SQLite 下漏行或重复聚合。
     """
     bid = brigade_filter_brigade_id(admin)
+    att_org_id = _attendance_org_id()
 
     sub_mins = (
         db.query(
-            TrainingSession.organization_id.label("oid"),
+            att_org_id.label("oid"),
             func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0).label("tm"),
         )
-        .select_from(TrainingSession)
-        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
-        .group_by(TrainingSession.organization_id)
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .group_by(att_org_id)
     )
     if start:
         sub_mins = sub_mins.filter(TrainingSession.start_at >= start)
@@ -1107,12 +1142,12 @@ def stats_orgs_by_district(
 
     sub_pc = (
         db.query(
-            TrainingSession.organization_id.label("oid"),
+            att_org_id.label("oid"),
             func.count(func.distinct(TrainingAttendance.person_id)).label("pc"),
         )
-        .select_from(TrainingSession)
-        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
-        .group_by(TrainingSession.organization_id)
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .group_by(att_org_id)
     )
     if start:
         sub_pc = sub_pc.filter(TrainingSession.start_at >= start)
@@ -1161,6 +1196,7 @@ def stats_types_by_district(
         q_orgs = q_orgs.filter(Organization.brigade_id == bid)
     orgs = q_orgs.all()
     org_type_by_id = {o.id: o.org_type for o in orgs}
+    att_org_id = _attendance_org_id()
     counts: dict[str, int] = {}
     for o in orgs:
         label = _org_type_name(o.org_type, db)
@@ -1168,14 +1204,14 @@ def stats_types_by_district(
 
     q = (
         db.query(
-            TrainingSession.organization_id,
+            att_org_id,
             func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0),
             func.count(func.distinct(TrainingAttendance.person_id)),
         )
-        .select_from(TrainingSession)
-        .join(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
-        .filter(TrainingSession.organization_id.in_(list(org_type_by_id.keys()) or [-1]))
-        .group_by(TrainingSession.organization_id)
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .filter(att_org_id.in_(list(org_type_by_id.keys()) or [-1]))
+        .group_by(att_org_id)
     )
     if start:
         q = q.filter(TrainingSession.start_at >= start)
@@ -1282,6 +1318,7 @@ def stats_persons_by_organization(
         raise HTTPException(404, "单位不存在")
     if admin.role == AdminRole.brigade and org.brigade_id != admin.brigade_id:
         raise HTTPException(403, "无权查看该单位")
+    att_org_id = _attendance_org_id()
     query = (
         db.query(
             Person.id,
@@ -1293,7 +1330,7 @@ def stats_persons_by_organization(
         .select_from(TrainingAttendance)
         .join(Person, Person.id == TrainingAttendance.person_id)
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
-        .filter(TrainingSession.organization_id == organization_id)
+        .filter(att_org_id == organization_id)
     )
     if start:
         query = query.filter(TrainingSession.start_at >= start)
@@ -1380,6 +1417,7 @@ def stats_by_job_title(
     end: Optional[datetime] = None,
 ):
     bid = brigade_filter_brigade_id(admin)
+    att_org_id = _attendance_org_id()
     base = (
         db.query(
             District.id,
@@ -1389,7 +1427,7 @@ def stats_by_job_title(
         .select_from(TrainingAttendance)
         .join(Person, Person.id == TrainingAttendance.person_id)
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
-        .join(Organization, Organization.id == TrainingSession.organization_id)
+        .join(Organization, Organization.id == att_org_id)
         .join(District, District.id == Organization.district_id)
         .filter(or_(Person.person_category == job_title, Person.job_title == job_title))
     )
@@ -1482,7 +1520,7 @@ def stats_org_completion(
             .join(Person, Person.id == TrainingAttendance.person_id)
             .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
             .filter(
-                Person.organization_id == organization_id,
+                _attendance_org_id() == organization_id,
                 or_(Person.person_category == title, Person.job_title == title),
             )
         )

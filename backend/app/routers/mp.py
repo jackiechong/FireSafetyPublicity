@@ -3,7 +3,7 @@ from typing import Annotated, List
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -362,9 +362,13 @@ def mp_checkin(
         existing = TrainingAttendance(
             session_id=sess.id,
             person_id=person.id,
+            organization_id=person.organization_id,
             duration_minutes=int(sess.duration_minutes or 0),
         )
         db.add(existing)
+        db.commit()
+    elif not existing.organization_id and person.organization_id:
+        existing.organization_id = person.organization_id
         db.commit()
 
     org = db.get(Organization, sess.organization_id)
@@ -396,7 +400,7 @@ def mp_trainings(
         )
         .select_from(TrainingAttendance)
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
-        .join(Organization, Organization.id == TrainingSession.organization_id)
+        .join(Organization, Organization.id == func.coalesce(TrainingAttendance.organization_id, TrainingSession.organization_id))
         .join(District, District.id == Organization.district_id)
         .filter(TrainingAttendance.person_id == person.id)
         .order_by(TrainingSession.start_at.desc())
