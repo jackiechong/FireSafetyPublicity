@@ -3,6 +3,7 @@
     <el-aside width="220px">
       <div class="brand">消防培训管理</div>
       <el-menu :default-active="active" router background-color="#1a237e" text-color="#e8eaf6" active-text-color="#ffd54f">
+        <el-menu-item index="/dashboard">首页总览</el-menu-item>
         <el-menu-item index="/orgs">单位录入</el-menu-item>
         <el-menu-item index="/trainings">培训记录</el-menu-item>
         <el-menu-item index="/persons">人员管理</el-menu-item>

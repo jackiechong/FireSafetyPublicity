@@ -227,7 +227,7 @@ const displayTotalMinutes = computed(() => {
 const displayTotalMinutesLabel = computed(() => formatTrainingHours(displayTotalMinutes.value));
 
 const displaySessionCount = computed(() => {
-  if (districtFilter.value != null && districtFilter.value !== "") {
+  if (districtFilter.value != null && districtFilter.value !== "" && Number(districtFilter.value) > 0) {
     const did = Number(districtFilter.value);
     const d = districtData.value.find((x) => Number(x.district_id) === did);
     return d ? d.session_count : "—";
@@ -402,7 +402,7 @@ async function handleSearchSelect(item) {
 
 async function loadDistrictsMeta() {
   const { data } = await http.get("/api/admin/districts");
-  districtOptions.value = data;
+  districtOptions.value = [{ id: 0, name: "葫芦岛支队" }, ...(data || [])];
 }
 
 async function loadCurrentAdmin() {

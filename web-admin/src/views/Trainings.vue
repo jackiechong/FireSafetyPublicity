@@ -9,15 +9,10 @@
       <el-table-column label="主题分类" min-width="120">
         <template #default="{ row }">{{ topicName(row.topic_id) }}</template>
       </el-table-column>
-      <el-table-column label="扫码" width="88" align="center">
-        <template #default="{ row }">
-          <el-switch
-            :model-value="row.is_active !== false"
-            @change="(v) => patchTrainingActive(row, v)"
-          />
-        </template>
+      <el-table-column label="状态" width="90">
+        <template #default="{ row }">{{ row.is_active !== false ? "进行中" : "已结束" }}</template>
       </el-table-column>
-      <el-table-column label="大队" width="110">
+      <el-table-column label="培训主办单位" width="130">
         <template #default="{ row }">{{ brigadeName(row.brigade_id) }}</template>
       </el-table-column>
       <el-table-column label="单位ID" width="80" prop="organization_id" />
@@ -44,7 +39,7 @@
             <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="大队" required>
+        <el-form-item label="培训主办单位" required>
           <el-select v-model="createForm.brigade_id" style="width: 100%">
             <el-option v-for="b in brigades" :key="b.id" :label="b.name" :value="b.id" />
           </el-select>
@@ -72,9 +67,6 @@
         <el-form-item label="地点">
           <el-input v-model="createForm.location" />
         </el-form-item>
-        <el-form-item label="开放扫码">
-          <el-switch v-model="createForm.is_active" active-text="活动场次" inactive-text="不开放" />
-        </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="createForm.remark" type="textarea" rows="2" />
         </el-form-item>
@@ -98,9 +90,6 @@
         <el-form-item label="开始时间" required>
           <el-date-picker v-model="editForm.start_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="结束时间">
-          <el-date-picker v-model="editForm.end_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" clearable style="width: 100%" />
-        </el-form-item>
         <el-form-item label="时长(分钟)">
           <el-input-number v-model="editForm.duration_minutes" :min="0" />
         </el-form-item>
@@ -117,7 +106,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="attVisible" title="添加参训人员（手机号需已在小程序实名）" width="440px">
+    <el-dialog v-model="attVisible" title="添加参训人员" width="500px">
       <el-form label-width="100px">
         <el-form-item label="培训ID">
           <span>{{ currentSession?.id }}</span>
@@ -125,6 +114,17 @@
         <el-form-item label="手机号">
           <el-input v-model="attPhone" maxlength="11" placeholder="与小程序绑定一致" />
         </el-form-item>
+        <template v-if="currentAdmin?.role === 'detachment'">
+          <el-form-item label="姓名">
+            <el-input v-model="attName" maxlength="64" placeholder="未注册人员必填" />
+          </el-form-item>
+          <el-form-item label="职务">
+            <el-input v-model="attJobTitle" maxlength="64" placeholder="如：值班员" />
+          </el-form-item>
+          <el-form-item label="人员类别">
+            <el-input v-model="attPersonCategory" maxlength="64" placeholder="如：消控室人员" />
+          </el-form-item>
+        </template>
         <el-form-item label="本次时长(分)">
           <el-input-number v-model="attDuration" :min="0" />
         </el-form-item>
@@ -147,6 +147,7 @@ const saving = ref(false);
 const rows = ref([]);
 const brigades = ref([]);
 const topics = ref([]);
+const currentAdmin = ref(null);
 const createVisible = ref(false);
 const createForm = reactive({
   title: "",
@@ -167,6 +168,9 @@ const attVisible = ref(false);
 const attSaving = ref(false);
 const currentSession = ref(null);
 const attPhone = ref("");
+const attName = ref("");
+const attJobTitle = ref("");
+const attPersonCategory = ref("");
 const attDuration = ref(0);
 const editVisible = ref(false);
 const editSaving = ref(false);
@@ -175,7 +179,6 @@ const editForm = reactive({
   title: "",
   topic_id: null,
   start_at: "",
-  end_at: "",
   duration_minutes: 60,
   location: "",
   remark: "",
@@ -192,18 +195,6 @@ function topicName(id) {
 function formatTime(iso) {
   if (!iso) return "";
   return iso.replace("T", " ").slice(0, 19);
-}
-
-async function patchTrainingActive(row, val) {
-  try {
-    await http.patch(`/api/admin/trainings/${row.id}`, { is_active: val });
-    row.is_active = val;
-    ElMessage.success(val ? "已设为活动场次" : "已关闭扫码");
-  } catch (e) {
-    console.error(e);
-    ElMessage.error(e?.response?.data?.detail || "更新失败");
-    await load();
-  }
 }
 
 async function load() {
@@ -270,7 +261,6 @@ function openEdit(row) {
     title: row.title || "",
     topic_id: row.topic_id || null,
     start_at: row.start_at ? row.start_at.slice(0, 19) : "",
-    end_at: row.end_at ? row.end_at.slice(0, 19) : "",
     duration_minutes: row.duration_minutes || 0,
     location: row.location || "",
     remark: row.remark || "",
@@ -289,7 +279,6 @@ async function submitEdit() {
       title: editForm.title.trim(),
       topic_id: editForm.topic_id || null,
       start_at: editForm.start_at,
-      end_at: editForm.end_at || null,
       duration_minutes: Number(editForm.duration_minutes || 0),
       location: editForm.location || null,
       remark: editForm.remark || null,
@@ -307,6 +296,9 @@ async function submitEdit() {
 function openAttendance(row) {
   currentSession.value = row;
   attPhone.value = "";
+  attName.value = "";
+  attJobTitle.value = "";
+  attPersonCategory.value = "";
   attDuration.value = row.duration_minutes || 0;
   attVisible.value = true;
 }
@@ -320,6 +312,10 @@ async function submitAttendance() {
   try {
     await http.post(`/api/admin/trainings/${currentSession.value.id}/attendance`, {
       phone: attPhone.value,
+      name: attName.value.trim() || undefined,
+      organization_id: currentSession.value.organization_id,
+      job_title: attJobTitle.value.trim() || undefined,
+      person_category: attPersonCategory.value.trim() || undefined,
       duration_minutes: attDuration.value,
     });
     ElMessage.success("已添加");
@@ -332,10 +328,12 @@ async function submitAttendance() {
 }
 
 onMounted(async () => {
-  const [b, t] = await Promise.all([
+  const [me, b, t] = await Promise.all([
+    http.get("/api/admin/me"),
     http.get("/api/admin/brigades"),
     http.get("/api/admin/training-topics"),
   ]);
+  currentAdmin.value = me.data;
   brigades.value = b.data;
   topics.value = t.data || [];
   await load();

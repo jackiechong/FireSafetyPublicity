@@ -60,7 +60,12 @@ const routes = [
     path: "/",
     component: Layout,
     children: [
-      { path: "", redirect: "/orgs" },
+      { path: "", redirect: "/dashboard" },
+      {
+        path: "dashboard",
+        name: "dashboard",
+        component: () => import("../views/Dashboard.vue"),
+      },
       {
         path: "orgs",
         name: "orgs",

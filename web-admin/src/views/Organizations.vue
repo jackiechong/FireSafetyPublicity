@@ -13,6 +13,10 @@
       <el-form-item>
         <el-button type="primary" @click="load">查询</el-button>
         <el-button @click="openDialog()">新增单位</el-button>
+        <el-button @click="downloadTemplate">下载导入模板</el-button>
+        <el-upload :show-file-list="false" accept=".xlsx" :http-request="uploadOrganizations">
+          <el-button type="success">批量导入</el-button>
+        </el-upload>
       </el-form-item>
     </el-form>
 
@@ -35,7 +39,7 @@
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDialog(row)">编辑</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
+          <el-button v-if="currentAdmin?.role === 'detachment'" link type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -93,6 +97,7 @@ const filterDistrict = ref();
 const dialogVisible = ref(false);
 const editing = ref(null);
 const orgTypes = ref([]);
+const currentAdmin = ref(null);
 
 const form = reactive({
   name: "",
@@ -115,14 +120,42 @@ function orgTypeName(value) {
 }
 
 async function loadMeta() {
-  const [b, d, t] = await Promise.all([
+  const [me, b, d, t] = await Promise.all([
+    http.get("/api/admin/me"),
     http.get("/api/admin/brigades"),
     http.get("/api/admin/districts"),
     http.get("/api/admin/org-types"),
   ]);
+  currentAdmin.value = me.data;
   brigades.value = b.data;
   districts.value = d.data;
   orgTypes.value = t.data || [];
+}
+
+function saveBlob(data, name) {
+  const url = URL.createObjectURL(new Blob([data]));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadTemplate() {
+  const { data } = await http.get("/api/admin/imports/organization-template.xlsx", { responseType: "blob" });
+  saveBlob(data, "organization-import-template.xlsx");
+}
+
+async function uploadOrganizations({ file }) {
+  const data = new FormData();
+  data.append("file", file);
+  const res = await http.post("/api/admin/imports/organizations", data);
+  if (res.data.ok) {
+    ElMessage.success(`导入完成，新增 ${res.data.imported} 个，更新 ${res.data.updated} 个`);
+    await load();
+  } else {
+    ElMessage.error((res.data.errors || []).slice(0, 5).join("；") || "导入失败");
+  }
 }
 
 async function load() {

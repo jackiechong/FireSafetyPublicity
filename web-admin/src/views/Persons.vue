@@ -18,7 +18,7 @@
         @clear="load"
       />
       <el-select v-model="filterDistrictId" clearable placeholder="区县" class="filter" @change="onFilterDistrictChange">
-        <el-option v-for="d in districts" :key="d.id" :label="d.name" :value="d.id" />
+        <el-option v-for="d in districtFilterOptions" :key="d.id" :label="d.name" :value="d.id" />
       </el-select>
       <el-select
         v-model="filterOrganizationId"
@@ -41,6 +41,9 @@
       <el-table-column prop="organization_name" label="所属单位" min-width="220" />
       <el-table-column prop="job_title" label="身份/岗位" min-width="130">
         <template #default="{ row }">{{ row.job_title || "—" }}</template>
+      </el-table-column>
+      <el-table-column prop="person_category" label="人员类别" min-width="130">
+        <template #default="{ row }">{{ row.person_category || "—" }}</template>
       </el-table-column>
       <el-table-column label="管理员" width="160">
         <template #default="{ row }">
@@ -82,7 +85,10 @@
         <el-form-item label="身份/岗位">
           <el-input v-model="form.job_title" maxlength="64" placeholder="如：消防安全管理人" />
         </el-form-item>
-        <el-form-item label="管理员">
+        <el-form-item label="人员类别">
+          <el-input v-model="form.person_category" maxlength="64" placeholder="如：消控室人员" />
+        </el-form-item>
+        <el-form-item v-if="currentAdmin?.role === 'detachment'" label="管理员">
           <el-switch
             v-model="form.is_admin"
             active-text="设为管理员"
@@ -123,10 +129,12 @@ const form = reactive({
   district_id: undefined,
   organization_id: undefined,
   job_title: "",
+  person_category: "",
   is_admin: false,
 });
 
-const canEdit = computed(() => currentAdmin.value?.role === "detachment");
+const canEdit = computed(() => !!currentAdmin.value);
+const districtFilterOptions = computed(() => [{ id: 0, name: "葫芦岛支队" }, ...districts.value]);
 
 function formatTime(iso) {
   if (!iso) return "—";
@@ -138,7 +146,7 @@ function errorMessage(e, fallback) {
 }
 
 async function loadOrgs(districtId) {
-  if (!districtId) return [];
+  if (!districtId || Number(districtId) === 0) return [];
   const { data } = await http.get("/api/admin/organizations", {
     params: { district_id: Number(districtId) },
   });
@@ -161,7 +169,7 @@ async function load() {
   try {
     const params = {};
     if (keyword.value.trim()) params.q = keyword.value.trim();
-    if (filterDistrictId.value) params.district_id = Number(filterDistrictId.value);
+    if (filterDistrictId.value && Number(filterDistrictId.value) > 0) params.district_id = Number(filterDistrictId.value);
     if (filterOrganizationId.value) params.organization_id = Number(filterOrganizationId.value);
     const { data } = await http.get("/api/admin/persons", { params });
     rows.value = data || [];
@@ -180,6 +188,7 @@ async function openEdit(row) {
     district_id: row.district_id,
     organization_id: row.organization_id,
     job_title: row.job_title || "",
+    person_category: row.person_category || "",
     is_admin: !!row.is_admin,
   });
   editOrgs.value = row.district_id ? await loadOrgs(row.district_id) : [];
@@ -208,6 +217,7 @@ async function submitEdit() {
       district_id: Number(form.district_id),
       organization_id: Number(form.organization_id),
       job_title: form.job_title.trim() || null,
+      person_category: form.person_category.trim() || null,
       is_admin: !!form.is_admin,
     });
     ElMessage.success("人员信息已保存");

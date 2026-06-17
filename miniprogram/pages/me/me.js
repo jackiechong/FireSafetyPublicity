@@ -5,10 +5,7 @@ Page({
     person: {},
     list: [],
     knowledgeCategories: [
-      { value: "knowledge", label: "消防知识" },
-      { value: "law", label: "法律法规" },
-      { value: "system", label: "制度" },
-      { value: "equipment", label: "器材使用" },
+      { code: "knowledge", name: "消防知识" },
     ],
     activeKnowledge: "",
     knowledgeList: [],
@@ -42,7 +39,7 @@ Page({
       if (!ok) {
         wx.redirectTo({ url: "/pages/bind/bind" });
       } else {
-        this.loadKnowledge("knowledge");
+        this.loadKnowledgeCategories();
       }
     } catch (e) {
       wx.showToast({ title: e.message || "加载失败", icon: "none" });
@@ -73,6 +70,16 @@ Page({
       this.setData({ activeKnowledge: category, knowledgeList: list || [] });
     } catch (e) {
       this.setData({ activeKnowledge: category, knowledgeList: [] });
+    }
+  },
+  async loadKnowledgeCategories() {
+    try {
+      const list = await request({ url: "/api/mp/knowledge-categories" });
+      const categories = list && list.length ? list : this.data.knowledgeCategories;
+      this.setData({ knowledgeCategories: categories });
+      this.loadKnowledge(categories[0].code);
+    } catch (e) {
+      this.loadKnowledge(this.data.knowledgeCategories[0].code);
     }
   },
   onPickKnowledge(e) {

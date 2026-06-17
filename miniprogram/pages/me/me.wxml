@@ -30,11 +30,11 @@
     <view class="knowledge-tabs">
       <view
         wx:for="{{knowledgeCategories}}"
-        wx:key="value"
-        class="knowledge-tab {{activeKnowledge === item.value ? 'active' : ''}}"
-        data-category="{{item.value}}"
+        wx:key="code"
+        class="knowledge-tab {{activeKnowledge === item.code ? 'active' : ''}}"
+        data-category="{{item.code}}"
         bindtap="onPickKnowledge"
-      >{{item.label}}</view>
+      >{{item.name}}</view>
     </view>
     <view wx:if="{{knowledgeList.length === 0}}" class="knowledge-empty">暂无内容</view>
     <view wx:for="{{knowledgeList}}" wx:key="id" class="knowledge-item">

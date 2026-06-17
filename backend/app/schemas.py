@@ -146,6 +146,19 @@ class KnowledgeArticleOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class KnowledgeCategoryCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+    code: Optional[str] = Field(default=None, max_length=64)
+    sort_order: int = Field(default=100, ge=0, le=9999)
+    is_active: bool = True
+
+
+class KnowledgeCategoryUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    sort_order: Optional[int] = Field(default=None, ge=0, le=9999)
+    is_active: Optional[bool] = None
+
+
 class BrigadeOut(BaseModel):
     id: int
     name: str
@@ -239,6 +252,10 @@ class TrainingSessionOut(BaseModel):
 class AttendanceAdd(BaseModel):
     person_id: Optional[int] = None
     phone: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=64)
+    organization_id: Optional[int] = None
+    job_title: Optional[str] = Field(default=None, max_length=64)
+    person_category: Optional[str] = Field(default=None, max_length=64)
     duration_minutes: Optional[int] = None
 
 
@@ -407,6 +424,7 @@ class AdminPersonRebindIn(BaseModel):
     district_id: int = Field(..., ge=1)
     organization_id: int = Field(..., ge=1)
     job_title: Optional[str] = Field(default=None, max_length=64)
+    person_category: Optional[str] = Field(default=None, max_length=64)
 
 
 class AdminPersonManageIn(AdminPersonRebindIn):
@@ -422,6 +440,7 @@ class AdminPersonOut(BaseModel):
     organization_id: Optional[int] = None
     organization_name: Optional[str] = None
     job_title: Optional[str] = None
+    person_category: Optional[str] = None
     wechat_bound: bool = True
     is_admin: bool = False
     admin_role: Optional[str] = None
@@ -467,6 +486,7 @@ class StatsTrainingSummaryItem(BaseModel):
 
 class StatsJobTitleSummary(BaseModel):
     job_title: str
+    person_category: Optional[str] = None
     total_person_count: int
     district_counts: list[dict]
     trainings: list[StatsTrainingSummaryItem]
@@ -482,6 +502,7 @@ class StatsTopicSummaryItem(BaseModel):
 
 class StatsOrgCompletionItem(BaseModel):
     job_title: str
+    person_category: Optional[str] = None
     registered_count: int
     trained_count: int
     completion_percent: float

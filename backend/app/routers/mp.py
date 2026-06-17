@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_person_token, resolve_mp_admin
-from app.models import Brigade, District, JobTitleOption, KnowledgeArticle, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession, TrainingTopicOption
+from app.models import Brigade, District, JobTitleOption, KnowledgeArticle, KnowledgeCategoryOption, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession, TrainingTopicOption
 from app.schemas import (
     DistrictOut,
     MpActiveTrainingItem,
@@ -162,6 +162,15 @@ def mp_knowledge_articles(
     if category:
         q = q.filter(KnowledgeArticle.category == category)
     return q.order_by(KnowledgeArticle.category, KnowledgeArticle.sort_order, KnowledgeArticle.id).all()
+
+
+@router.get("/knowledge-categories", response_model=List[DictionaryOptionOut])
+def mp_knowledge_categories(
+    _: Annotated[Person, Depends(get_current_person_token)],
+    db: Session = Depends(get_db),
+):
+    rows = db.query(KnowledgeCategoryOption).filter(KnowledgeCategoryOption.is_active.is_(True)).order_by(KnowledgeCategoryOption.sort_order, KnowledgeCategoryOption.id).all()
+    return [DictionaryOptionOut(id=o.id, code=o.code, name=o.name, sort_order=o.sort_order, is_active=o.is_active) for o in rows]
 
 
 @router.get("/organizations", response_model=List[MpOrgListItem])

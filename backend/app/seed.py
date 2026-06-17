@@ -14,6 +14,7 @@ from app.models import (
     District,
     JobTitleOption,
     KnowledgeArticle,
+    KnowledgeCategoryOption,
     Organization,
     OrgType,
     OrgTypeOption,
@@ -38,6 +39,7 @@ DISTRICTS = [
 ]
 
 BRIGADES = [
+    ("葫芦岛支队", "HLDZD"),
     ("连山大队", "LS"),
     ("龙港大队", "LG"),
     ("南票大队", "NP"),
@@ -192,6 +194,8 @@ def seed():
                 )
             db.commit()
 
+        _ensure_root_admin(db)
+
         _seed_demo_dataset(db)
         _ensure_demo_persons(db)
         _ensure_demo_trainings(db, total=200)
@@ -232,6 +236,28 @@ def _ensure_other_organizations(db: Session) -> None:
         db.commit()
 
 
+def _ensure_root_admin(db: Session) -> None:
+    """确保最高权限管理员账号存在：admin / admin。"""
+    user = db.query(AdminUser).filter(AdminUser.username == "admin").first()
+    if not user:
+        db.add(
+            AdminUser(
+                username="admin",
+                password_hash=hash_password("admin"),
+                role=AdminRole.detachment,
+                brigade_id=None,
+                is_active=True,
+            )
+        )
+        db.commit()
+        return
+    user.password_hash = hash_password("admin")
+    user.role = AdminRole.detachment
+    user.brigade_id = None
+    user.is_active = True
+    db.commit()
+
+
 def _ensure_dictionary_options(db: Session) -> None:
     changed = False
     existing_types = {x.code: x for x in db.query(OrgTypeOption).all()}
@@ -254,12 +280,17 @@ def _ensure_dictionary_options(db: Session) -> None:
         if name not in existing_topics:
             db.add(TrainingTopicOption(name=name, sort_order=idx, is_active=True))
             changed = True
-    existing_articles = {
-        (x.category, x.title) for x in db.query(KnowledgeArticle).filter(KnowledgeArticle.remark.is_(None)).all()
-    } if hasattr(KnowledgeArticle, "remark") else set()
+    existing_categories = {x.code: x for x in db.query(KnowledgeCategoryOption).all()}
     for idx, (code, label) in enumerate(DEFAULT_KNOWLEDGE_CATEGORIES, start=1):
+        cat = existing_categories.get(code)
+        if not cat:
+            db.add(KnowledgeCategoryOption(code=code, name=label, sort_order=idx, is_active=True))
+            changed = True
+        elif cat.name != label and not db.query(KnowledgeCategoryOption).filter(KnowledgeCategoryOption.name == label, KnowledgeCategoryOption.code != code).first():
+            cat.name = label
+            changed = True
         title = f"{label}栏目"
-        if (code, title) not in existing_articles and not db.query(KnowledgeArticle).filter(
+        if not db.query(KnowledgeArticle).filter(
             KnowledgeArticle.category == code, KnowledgeArticle.title == title
         ).first():
             db.add(KnowledgeArticle(category=code, title=title, content="请在后台编辑本栏目内容。", sort_order=idx, is_active=True))

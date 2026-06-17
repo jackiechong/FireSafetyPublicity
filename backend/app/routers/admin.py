@@ -20,6 +20,7 @@ from app.models import (
     District,
     JobTitleOption,
     KnowledgeArticle,
+    KnowledgeCategoryOption,
     Organization,
     OrgType,
     OrgTypeOption,
@@ -49,6 +50,8 @@ from app.schemas import (
     KnowledgeArticleCreate,
     KnowledgeArticleOut,
     KnowledgeArticleUpdate,
+    KnowledgeCategoryCreate,
+    KnowledgeCategoryUpdate,
     OrganizationCreate,
     OrganizationOut,
     OrganizationUpdate,
@@ -93,6 +96,8 @@ ORG_TYPE_LABELS = {
     OrgType.enterprise: "其他部门",
 }
 
+DETACHMENT_BRIGADE_CODE = "HLDZD"
+
 
 def _org_type_value(value) -> str:
     return value.value if hasattr(value, "value") else str(value or "")
@@ -114,6 +119,13 @@ def _slug_code(name: str) -> str:
     raw = "".join(ch.lower() if ch.isalnum() else "_" for ch in name.strip())
     raw = "_".join(part for part in raw.split("_") if part)
     return raw[:48] or f"custom_{secrets.randbelow(1_000_000):06d}"
+
+
+def _is_detachment_brigade(db: Session, brigade_id: Optional[int]) -> bool:
+    if not brigade_id:
+        return False
+    b = db.get(Brigade, brigade_id)
+    return bool(b and b.code == DETACHMENT_BRIGADE_CODE)
 
 
 def _apply_time_range(query, start: Optional[datetime], end: Optional[datetime]):
@@ -256,7 +268,8 @@ def list_brigades(
     bid = brigade_filter_brigade_id(admin)
     if bid is not None:
         q = q.filter(Brigade.id == bid)
-    return q.order_by(Brigade.id).all()
+    rows = q.order_by(Brigade.id).all()
+    return sorted(rows, key=lambda b: 0 if b.code == DETACHMENT_BRIGADE_CODE else 1)
 
 
 @router.get("/districts", response_model=List[DistrictOut])
@@ -484,6 +497,81 @@ def delete_training_topic(
     db.commit()
 
 
+@router.get("/knowledge-categories", response_model=List[DictionaryOptionOut])
+def list_knowledge_categories(
+    _: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    include_inactive: bool = False,
+):
+    q = db.query(KnowledgeCategoryOption)
+    if not include_inactive:
+        q = q.filter(KnowledgeCategoryOption.is_active.is_(True))
+    rows = q.order_by(KnowledgeCategoryOption.sort_order, KnowledgeCategoryOption.id).all()
+    return [
+        DictionaryOptionOut(id=o.id, code=o.code, name=o.name, sort_order=o.sort_order, is_active=o.is_active)
+        for o in rows
+    ]
+
+
+@router.post("/knowledge-categories", response_model=DictionaryOptionOut)
+def create_knowledge_category(
+    body: KnowledgeCategoryCreate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    name = body.name.strip()
+    code = (body.code or _slug_code(name)).strip()
+    if db.query(KnowledgeCategoryOption).filter(or_(KnowledgeCategoryOption.name == name, KnowledgeCategoryOption.code == code)).first():
+        raise HTTPException(400, "栏目名称或编码已存在")
+    row = KnowledgeCategoryOption(code=code, name=name, sort_order=body.sort_order, is_active=body.is_active)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return DictionaryOptionOut(id=row.id, code=row.code, name=row.name, sort_order=row.sort_order, is_active=row.is_active)
+
+
+@router.patch("/knowledge-categories/{item_id}", response_model=DictionaryOptionOut)
+def update_knowledge_category(
+    item_id: int,
+    body: KnowledgeCategoryUpdate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(KnowledgeCategoryOption, item_id)
+    if not row:
+        raise HTTPException(404, "栏目不存在")
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data and data["name"]:
+        name = data["name"].strip()
+        dup = db.query(KnowledgeCategoryOption).filter(KnowledgeCategoryOption.name == name, KnowledgeCategoryOption.id != row.id).first()
+        if dup:
+            raise HTTPException(400, "栏目名称已存在")
+        row.name = name
+    if "sort_order" in data:
+        row.sort_order = data["sort_order"]
+    if "is_active" in data:
+        row.is_active = data["is_active"]
+    db.commit()
+    db.refresh(row)
+    return DictionaryOptionOut(id=row.id, code=row.code, name=row.name, sort_order=row.sort_order, is_active=row.is_active)
+
+
+@router.delete("/knowledge-categories/{item_id}", status_code=204)
+def delete_knowledge_category(
+    item_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    row = db.get(KnowledgeCategoryOption, item_id)
+    if not row:
+        raise HTTPException(404, "栏目不存在")
+    if db.query(KnowledgeArticle).filter(KnowledgeArticle.category == row.code).first():
+        row.is_active = False
+    else:
+        db.delete(row)
+    db.commit()
+
+
 @router.get("/knowledge-articles", response_model=List[KnowledgeArticleOut])
 def list_knowledge_articles(
     _: Annotated[AdminUser, Depends(get_current_admin)],
@@ -645,8 +733,8 @@ def delete_organization(
     o = db.get(Organization, org_id)
     if not o:
         raise HTTPException(404, "不存在")
-    if admin.role == AdminRole.brigade and o.brigade_id != admin.brigade_id:
-        raise HTTPException(403, "无权操作")
+    if admin.role == AdminRole.brigade:
+        raise HTTPException(403, "大队账号不可删除数据")
     db.delete(o)
     db.commit()
 
@@ -679,7 +767,7 @@ def create_training(
     if admin.role == AdminRole.brigade and body.brigade_id != admin.brigade_id:
         raise HTTPException(403, "只能在本大队下创建培训")
     org = db.get(Organization, body.organization_id)
-    if not org or org.brigade_id != body.brigade_id:
+    if not org or (org.brigade_id != body.brigade_id and not _is_detachment_brigade(db, body.brigade_id)):
         raise HTTPException(400, "单位与大队不匹配")
     if body.topic_id and not db.query(TrainingTopicOption).filter(
         TrainingTopicOption.id == body.topic_id,
@@ -836,7 +924,40 @@ def add_attendance(
     elif body.phone:
         person = db.query(Person).filter(Person.phone == body.phone).first()
     if not person:
-        raise HTTPException(400, "未找到人员，请先在小程序完成实名绑定")
+        if admin.role != AdminRole.detachment:
+            raise HTTPException(400, "未找到人员，请先在小程序完成实名绑定")
+        if not body.phone or not body.name:
+            raise HTTPException(400, "支队管理员直接添加人员时需填写姓名和手机号")
+        clean_phone = body.phone.strip()
+        if not (clean_phone.startswith("1") and len(clean_phone) == 11 and clean_phone.isdigit()):
+            raise HTTPException(400, "手机号格式错误")
+        org = db.get(Organization, body.organization_id or sess.organization_id)
+        if not org:
+            raise HTTPException(400, "单位不存在")
+        person = Person(
+            openid=f"manual_{clean_phone}",
+            name=body.name.strip(),
+            phone=clean_phone,
+            district_id=org.district_id,
+            organization_id=org.id,
+            job_title=body.job_title.strip() if body.job_title else None,
+            person_category=body.person_category.strip() if body.person_category else None,
+        )
+        db.add(person)
+        db.flush()
+    elif admin.role == AdminRole.detachment:
+        changed = False
+        if body.name and not person.name:
+            person.name = body.name.strip()
+            changed = True
+        if body.job_title:
+            person.job_title = body.job_title.strip()
+            changed = True
+        if body.person_category:
+            person.person_category = body.person_category.strip()
+            changed = True
+        if changed:
+            db.flush()
 
     dur = body.duration_minutes if body.duration_minutes is not None else sess.duration_minutes
     existing = (
@@ -1243,7 +1364,9 @@ def stats_training_summary(
     if topic_id is not None:
         q = q.filter(TrainingSession.topic_id == topic_id)
     if job_title:
-        q = q.join(Person, Person.id == TrainingAttendance.person_id).filter(Person.job_title == job_title)
+        q = q.join(Person, Person.id == TrainingAttendance.person_id).filter(
+            or_(Person.person_category == job_title, Person.job_title == job_title)
+        )
     rows = q.order_by(TrainingSession.start_at.desc()).limit(1000).all()
     return [_summary_item(r) for r in rows]
 
@@ -1268,16 +1391,19 @@ def stats_by_job_title(
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
         .join(Organization, Organization.id == TrainingSession.organization_id)
         .join(District, District.id == Organization.district_id)
-        .filter(Person.job_title == job_title)
+        .filter(or_(Person.person_category == job_title, Person.job_title == job_title))
     )
     if bid is not None:
         base = base.filter(TrainingSession.brigade_id == bid)
     base = _apply_time_range(base, start, end)
     rows = base.group_by(District.id, District.name).order_by(District.id).all()
-    trainings_q = _training_summary_query(admin, db, start, end).join(Person, Person.id == TrainingAttendance.person_id).filter(Person.job_title == job_title)
+    trainings_q = _training_summary_query(admin, db, start, end).join(Person, Person.id == TrainingAttendance.person_id).filter(
+        or_(Person.person_category == job_title, Person.job_title == job_title)
+    )
     trainings = [_summary_item(r) for r in trainings_q.order_by(TrainingSession.start_at.desc()).limit(300).all()]
     return StatsJobTitleSummary(
         job_title=job_title,
+        person_category=job_title,
         total_person_count=sum(int(r[2] or 0) for r in rows),
         district_counts=[{"district_id": r[0], "district_name": r[1], "person_count": int(r[2] or 0)} for r in rows],
         trainings=trainings,
@@ -1340,9 +1466,12 @@ def stats_org_completion(
     if admin.role == AdminRole.brigade and org.brigade_id != admin.brigade_id:
         raise HTTPException(403, "无权查看该单位")
     registered = (
-        db.query(Person.job_title, func.count(Person.id))
-        .filter(Person.organization_id == organization_id, Person.job_title.isnot(None), Person.job_title != "")
-        .group_by(Person.job_title)
+        db.query(func.coalesce(Person.person_category, Person.job_title), func.count(Person.id))
+        .filter(    
+            Person.organization_id == organization_id,
+            or_(Person.person_category.isnot(None), Person.job_title.isnot(None)),
+        )
+        .group_by(func.coalesce(Person.person_category, Person.job_title))
         .all()
     )
     out: list[StatsOrgCompletionItem] = []
@@ -1352,13 +1481,17 @@ def stats_org_completion(
             .select_from(TrainingAttendance)
             .join(Person, Person.id == TrainingAttendance.person_id)
             .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
-            .filter(Person.organization_id == organization_id, Person.job_title == title)
+            .filter(
+                Person.organization_id == organization_id,
+                or_(Person.person_category == title, Person.job_title == title),
+            )
         )
         q = _apply_time_range(q, start, end)
         trained = int(q.scalar() or 0)
         total_i = int(total or 0)
         out.append(StatsOrgCompletionItem(
             job_title=title or "未填",
+            person_category=title or "未填",
             registered_count=total_i,
             trained_count=trained,
             completion_percent=round((trained / total_i * 100) if total_i else 0, 1),
@@ -1379,7 +1512,9 @@ def export_training_summary(
     if topic_id is not None:
         q = q.filter(TrainingSession.topic_id == topic_id)
     if job_title:
-        q = q.join(Person, Person.id == TrainingAttendance.person_id).filter(Person.job_title == job_title)
+        q = q.join(Person, Person.id == TrainingAttendance.person_id).filter(
+            or_(Person.person_category == job_title, Person.job_title == job_title)
+        )
     rows = q.order_by(TrainingSession.start_at.desc()).limit(5000).all()
     return _xlsx_response(
         "training-summary.xlsx",
@@ -1392,8 +1527,8 @@ def export_training_summary(
 def download_person_import_template(_: Annotated[AdminUser, Depends(get_current_admin)]):
     return _xlsx_response(
         "person-import-template.xlsx",
-        ["姓名", "手机号", "区县", "单位名称", "职务/人员类别", "是否管理员"],
-        [["张三", "13800000000", "龙港区", "葫芦岛市消防救援支队", "消控室人员", "否"]],
+        ["姓名", "手机号", "区县", "单位名称", "职务", "人员类别", "是否管理员"],
+        [["张三", "13800000000", "龙港区", "葫芦岛市消防救援支队", "值班员", "消控室人员", "否"]],
     )
 
 
@@ -1411,7 +1546,7 @@ async def import_persons(
     if not rows:
         raise HTTPException(400, "Excel 为空")
     header = [x.strip() for x in rows[0]]
-    required = ["姓名", "手机号", "区县", "单位名称", "职务/人员类别"]
+    required = ["姓名", "手机号", "区县", "单位名称", "人员类别"]
     missing = [x for x in required if x not in header]
     if missing:
         raise HTTPException(400, f"缺少列：{', '.join(missing)}")
@@ -1427,11 +1562,12 @@ async def import_persons(
         phone = val("手机号")
         district_name = val("区县")
         org_name = val("单位名称")
-        job_title = val("职务/人员类别")
+        job_title = val("职务") or val("职务/人员类别")
+        person_category = val("人员类别") or job_title
         is_admin_text = val("是否管理员")
-        if not any([name, phone, district_name, org_name, job_title]):
+        if not any([name, phone, district_name, org_name, person_category]):
             continue
-        if not name or not phone or not district_name or not org_name or not job_title:
+        if not name or not phone or not district_name or not org_name or not person_category:
             errors.append(f"第{line_no}行：必填项不完整")
             continue
         if not phone.startswith("1") or len(phone) != 11 or not phone.isdigit():
@@ -1454,6 +1590,7 @@ async def import_persons(
             person.district_id = district.id
             person.organization_id = org.id
             person.job_title = job_title
+            person.person_category = person_category
             updated += 1
         else:
             person = Person(
@@ -1463,12 +1600,107 @@ async def import_persons(
                 district_id=district.id,
                 organization_id=org.id,
                 job_title=job_title,
+                person_category=person_category,
             )
             db.add(person)
             imported += 1
         db.flush()
         if admin.role == AdminRole.detachment and is_admin_text in ("是", "管理员", "1", "true", "TRUE"):
             _sync_person_admin(person, org, True, db)
+    if errors:
+        db.rollback()
+        return {"ok": False, "imported": 0, "updated": 0, "errors": errors[:50]}
+    db.commit()
+    return {"ok": True, "imported": imported, "updated": updated, "errors": []}
+
+
+@router.get("/imports/organization-template.xlsx")
+def download_organization_import_template(_: Annotated[AdminUser, Depends(get_current_admin)]):
+    return _xlsx_response(
+        "organization-import-template.xlsx",
+        ["单位名称", "单位类型", "区县", "所属大队", "联系人", "联系电话", "备注"],
+        [["某某单位", "商务", "龙港区", "龙港大队", "李四", "13800000000", ""]],
+    )
+
+
+@router.post("/imports/organizations")
+async def import_organizations(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    data = await file.read()
+    try:
+        rows = _read_xlsx_rows(data)
+    except Exception as exc:
+        raise HTTPException(400, f"无法读取 Excel：{exc}")
+    if not rows:
+        raise HTTPException(400, "Excel 为空")
+    header = [x.strip() for x in rows[0]]
+    required = ["单位名称", "单位类型", "区县"]
+    missing = [x for x in required if x not in header]
+    if missing:
+        raise HTTPException(400, f"缺少列：{', '.join(missing)}")
+    idx = {name: header.index(name) for name in header}
+    type_by_name = {x.name: x.code for x in db.query(OrgTypeOption).filter(OrgTypeOption.is_active.is_(True)).all()}
+    brigade_by_name = {x.name: x for x in db.query(Brigade).all()}
+    district_by_name = {x.name: x for x in db.query(District).all()}
+    imported = 0
+    updated = 0
+    errors: list[str] = []
+    for line_no, row in enumerate(rows[1:], start=2):
+        def val(col: str) -> str:
+            pos = idx.get(col, -1)
+            return row[pos].strip() if 0 <= pos < len(row) else ""
+        name = val("单位名称")
+        type_name = val("单位类型")
+        district_name = val("区县")
+        brigade_name = val("所属大队")
+        if not any([name, type_name, district_name, brigade_name]):
+            continue
+        if not name or not type_name or not district_name:
+            errors.append(f"第{line_no}行：单位名称、单位类型、区县必填")
+            continue
+        district = district_by_name.get(district_name)
+        if not district:
+            errors.append(f"第{line_no}行：区县不存在")
+            continue
+        org_type = type_by_name.get(type_name) or type_name
+        if org_type not in type_by_name.values():
+            errors.append(f"第{line_no}行：单位类型不存在或已停用")
+            continue
+        if admin.role == AdminRole.brigade:
+            brigade = db.get(Brigade, admin.brigade_id)
+        else:
+            brigade = brigade_by_name.get(brigade_name) if brigade_name else db.query(Brigade).filter(Brigade.code == DETACHMENT_BRIGADE_CODE).first()
+        if not brigade:
+            errors.append(f"第{line_no}行：所属大队不存在")
+            continue
+        if admin.role == AdminRole.brigade and brigade.id != admin.brigade_id:
+            errors.append(f"第{line_no}行：无权导入该大队单位")
+            continue
+        org = db.query(Organization).filter(Organization.district_id == district.id, Organization.name == name).first()
+        if org:
+            if admin.role == AdminRole.brigade and org.brigade_id != admin.brigade_id:
+                errors.append(f"第{line_no}行：无权修改该单位")
+                continue
+            org.org_type = org_type
+            org.brigade_id = brigade.id
+            org.contact_name = val("联系人") or None
+            org.contact_phone = val("联系电话") or None
+            org.remark = val("备注") or org.remark
+            updated += 1
+        else:
+            db.add(Organization(
+                name=name,
+                org_type=org_type,
+                brigade_id=brigade.id,
+                district_id=district.id,
+                contact_name=val("联系人") or None,
+                contact_phone=val("联系电话") or None,
+                remark=val("备注") or None,
+            ))
+            imported += 1
     if errors:
         db.rollback()
         return {"ok": False, "imported": 0, "updated": 0, "errors": errors[:50]}
@@ -1615,6 +1847,7 @@ def _person_out(person: Person, db: Session) -> AdminPersonOut:
         organization_id=person.organization_id,
         organization_name=org.name if org else None,
         job_title=person.job_title,
+        person_category=person.person_category,
         wechat_bound=bool(person.openid),
         is_admin=bool(admin and admin.is_active),
         admin_role=admin.role.value if admin else None,
@@ -1685,7 +1918,7 @@ def _sync_person_admin(person: Person, org: Organization, is_admin: bool, db: Se
 def manage_person_profile(
     person_id: int,
     body: AdminPersonManageIn,
-    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
     db: Session = Depends(get_db),
 ):
     person = db.get(Person, person_id)
@@ -1696,6 +1929,12 @@ def manage_person_profile(
     org = db.get(Organization, body.organization_id)
     if not org or org.district_id != body.district_id:
         raise HTTPException(400, "所选单位与区县不一致，或单位不存在")
+    if admin.role == AdminRole.brigade:
+        current_org = db.get(Organization, person.organization_id) if person.organization_id else None
+        if (current_org and current_org.brigade_id != admin.brigade_id) or org.brigade_id != admin.brigade_id:
+            raise HTTPException(403, "只能修改本大队人员")
+        if body.is_admin:
+            raise HTTPException(403, "大队账号不可设置管理员身份")
     dup = db.query(Person).filter(Person.phone == body.phone, Person.id != person.id).first()
     if dup:
         raise HTTPException(400, "该手机号已被其他人员绑定")
@@ -1705,7 +1944,9 @@ def manage_person_profile(
     person.district_id = body.district_id
     person.organization_id = body.organization_id
     person.job_title = body.job_title.strip() if body.job_title else None
-    _sync_person_admin(person, org, body.is_admin, db)
+    person.person_category = body.person_category.strip() if body.person_category else None
+    if admin.role == AdminRole.detachment:
+        _sync_person_admin(person, org, body.is_admin, db)
     db.commit()
     db.refresh(person)
     return _person_out(person, db)
@@ -1736,6 +1977,7 @@ def rebind_person_profile(
     person.district_id = body.district_id
     person.organization_id = body.organization_id
     person.job_title = body.job_title.strip() if body.job_title else None
+    person.person_category = body.person_category.strip() if body.person_category else None
     db.commit()
     db.refresh(person)
     return _person_out(person, db)
