@@ -1,11 +1,26 @@
 <template>
   <div class="page">
     <h2>培训记录</h2>
-    <el-button type="primary" @click="openCreate">登记培训</el-button>
+    <div class="toolbar">
+      <el-input
+        v-model="searchQ"
+        clearable
+        placeholder="搜索会议名称"
+        style="width: 280px"
+        @keyup.enter="load"
+        @clear="load"
+      />
+      <el-button type="primary" @click="load">搜索会议</el-button>
+      <el-button type="primary" @click="openCreate">登记培训</el-button>
+    </div>
 
     <el-table :data="rows" border stripe v-loading="loading" style="margin-top: 16px">
       <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="title" label="主题" min-width="160" />
+      <el-table-column label="主题" min-width="180">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openAttendanceList(row)">{{ row.title }}</el-button>
+        </template>
+      </el-table-column>
       <el-table-column label="主题分类" min-width="120">
         <template #default="{ row }">{{ topicName(row.topic_id) }}</template>
       </el-table-column>
@@ -20,10 +35,13 @@
       </el-table-column>
       <el-table-column prop="duration_minutes" label="时长(分)" width="100" />
       <el-table-column prop="location" label="地点" min-width="120" />
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link type="primary" @click="openAttendance(row)">添加参训人员</el-button>
+          <el-button link type="primary" @click="exportAttendance(row)">导出签到簿</el-button>
+          <el-button v-if="row.is_active !== false" link type="warning" @click="endTraining(row)">结束</el-button>
+          <el-button link type="danger" @click="deleteTraining(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -119,17 +137,34 @@
         <el-button type="primary" :loading="attSaving" @click="submitAttendance">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="attListVisible" :title="`${attListSession?.title || '培训'}参训人员`" width="760px" destroy-on-close>
+      <el-table :data="attListRows" border stripe v-loading="attListLoading" size="small">
+        <el-table-column prop="index" label="序号" width="70" />
+        <el-table-column prop="organization_name" label="单位" min-width="200" />
+        <el-table-column prop="name" label="姓名" width="110" />
+        <el-table-column prop="job_title" label="职务" width="130">
+          <template #default="{ row }">{{ row.job_title || "—" }}</template>
+        </el-table-column>
+        <el-table-column prop="phone" label="电话" width="130" />
+      </el-table>
+      <template #footer>
+        <el-button @click="attListVisible = false">关闭</el-button>
+        <el-button type="primary" @click="exportAttendance(attListSession)">导出签到簿</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import http from "../api/http";
 
 const loading = ref(false);
 const saving = ref(false);
 const rows = ref([]);
+const searchQ = ref("");
 const brigades = ref([]);
 const topics = ref([]);
 const currentAdmin = ref(null);
@@ -164,6 +199,10 @@ const editForm = reactive({
   location: "",
   remark: "",
 });
+const attListVisible = ref(false);
+const attListLoading = ref(false);
+const attListRows = ref([]);
+const attListSession = ref(null);
 
 function brigadeName(id) {
   return brigades.value.find((b) => b.id === id)?.name || id;
@@ -181,7 +220,9 @@ function formatTime(iso) {
 async function load() {
   loading.value = true;
   try {
-    const { data } = await http.get("/api/admin/trainings");
+    const params = {};
+    if (searchQ.value.trim()) params.q = searchQ.value.trim();
+    const { data } = await http.get("/api/admin/trainings", { params });
     rows.value = data;
   } finally {
     loading.value = false;
@@ -292,6 +333,47 @@ async function submitAttendance() {
   }
 }
 
+function saveBlob(data, name) {
+  const url = URL.createObjectURL(new Blob([data]));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function openAttendanceList(row) {
+  attListSession.value = row;
+  attListVisible.value = true;
+  attListLoading.value = true;
+  try {
+    const { data } = await http.get(`/api/admin/trainings/${row.id}/attendances`);
+    attListRows.value = data || [];
+  } finally {
+    attListLoading.value = false;
+  }
+}
+
+async function exportAttendance(row) {
+  if (!row?.id) return;
+  const { data } = await http.get(`/api/admin/exports/training-attendance/${row.id}.xlsx`, { responseType: "blob" });
+  saveBlob(data, `${row.title || "培训"}-签到簿.xlsx`);
+}
+
+async function endTraining(row) {
+  await ElMessageBox.confirm(`确定提前结束“${row.title}”吗？`, "提前结束", { type: "warning" });
+  await http.post(`/api/admin/trainings/${row.id}/end`);
+  ElMessage.success("已结束");
+  await load();
+}
+
+async function deleteTraining(row) {
+  await ElMessageBox.confirm(`确定删除“${row.title}”吗？删除后参训记录也会一并删除。`, "删除培训", { type: "warning" });
+  await http.delete(`/api/admin/trainings/${row.id}`);
+  ElMessage.success("已删除");
+  await load();
+}
+
 onMounted(async () => {
   const [me, b, t] = await Promise.all([
     http.get("/api/admin/me"),
@@ -315,5 +397,10 @@ onMounted(async () => {
 h2 {
   margin: 0 0 16px;
   font-size: 1.25rem;
+}
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 </style>

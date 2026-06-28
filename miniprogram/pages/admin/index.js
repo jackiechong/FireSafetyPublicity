@@ -235,6 +235,28 @@ Page({
     });
   },
 
+  async onDeleteTraining(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    wx.showModal({
+      title: "删除培训",
+      content: "删除后本场培训和签到记录都会被删除，确定继续吗？",
+      success: async (res) => {
+        if (!res.confirm) return;
+        try {
+          await request({
+            url: `/api/mp/admin/trainings/${id}`,
+            method: "DELETE",
+          });
+          wx.showToast({ title: "已删除", icon: "success" });
+          await this.loadTrainings();
+        } catch (err) {
+          wx.showToast({ title: err.message || "删除失败", icon: "none" });
+        }
+      },
+    });
+  },
+
   showQrData(data) {
     this.setData({
       qrInfo: data,

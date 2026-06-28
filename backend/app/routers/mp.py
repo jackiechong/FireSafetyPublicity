@@ -177,26 +177,45 @@ def mp_knowledge_categories(
 def mp_organizations(
     _: Annotated[Person, Depends(get_current_person_token)],
     db: Session = Depends(get_db),
-    district_id: int = Query(..., description="区县 ID"),
+    district_id: int | None = Query(None, description="区县 ID"),
     q: str = Query("", description="单位名称关键词"),
 ):
-    query = db.query(Organization).filter(Organization.district_id == district_id)
-    if q.strip():
-        like = f"%{q.strip()}%"
+    keyword = q.strip()
+    query = db.query(Organization)
+    if keyword:
+        like = f"%{keyword}%"
         query = query.filter(Organization.name.like(like))
-    district = db.get(District, district_id)
+    elif district_id:
+        query = query.filter(Organization.district_id == district_id)
+    else:
+        query = query.filter(False)
+    district = db.get(District, district_id) if district_id else None
     priority_names = []
     if district and district.name == "龙港区":
         priority_names = ["葫芦岛市消防救援支队", "龙港区消防救援大队"]
     elif district:
         priority_names = [f"{district.name}消防救援大队"]
-    priority_order = case(
-        {name: idx for idx, name in enumerate(priority_names)},
-        value=Organization.name,
-        else_=len(priority_names),
-    )
-    rows = query.order_by(priority_order, Organization.name).limit(100).all()
-    return [MpOrgListItem(id=o.id, name=o.name, org_type=str(o.org_type)) for o in rows]
+    if priority_names:
+        priority_order = case(
+            {name: idx for idx, name in enumerate(priority_names)},
+            value=Organization.name,
+            else_=len(priority_names),
+        )
+        query = query.order_by(priority_order, Organization.name)
+    else:
+        query = query.order_by(Organization.name)
+    rows = query.limit(100).all()
+    districts = {d.id: d.name for d in db.query(District).filter(District.id.in_([o.district_id for o in rows] or [-1])).all()}
+    return [
+        MpOrgListItem(
+            id=o.id,
+            name=o.name,
+            org_type=str(o.org_type),
+            district_id=o.district_id,
+            district_name=districts.get(o.district_id),
+        )
+        for o in rows
+    ]
 
 
 # 小程序自助创建单位时，按所在区县选择默认承接大队
@@ -230,9 +249,10 @@ def mp_create_organization(
         .first()
     )
     if dup:
-        return MpOrgListItem(id=dup.id, name=dup.name, org_type=str(dup.org_type))
-    if not db.query(OrgTypeOption).filter(OrgTypeOption.code == body.org_type, OrgTypeOption.is_active.is_(True)).first():
-        raise HTTPException(400, "单位类型不存在或已停用")
+        return MpOrgListItem(id=dup.id, name=dup.name, org_type=str(dup.org_type), district_id=dup.district_id, district_name=district.name)
+    org_type = body.org_type or OrgType.other_department.value
+    if not db.query(OrgTypeOption).filter(OrgTypeOption.code == org_type, OrgTypeOption.is_active.is_(True)).first():
+        org_type = OrgType.other_department.value
 
     code = _DISTRICT_DEFAULT_BRIGADE_CODE.get(district.name)
     brigade = (
@@ -243,7 +263,7 @@ def mp_create_organization(
 
     org = Organization(
         name=name,
-        org_type=body.org_type,
+        org_type=org_type,
         brigade_id=brigade.id,
         district_id=district.id,
         remark="MP_SELF_REGISTER",
@@ -251,7 +271,7 @@ def mp_create_organization(
     db.add(org)
     db.commit()
     db.refresh(org)
-    return MpOrgListItem(id=org.id, name=org.name, org_type=str(org.org_type))
+    return MpOrgListItem(id=org.id, name=org.name, org_type=str(org.org_type), district_id=org.district_id, district_name=district.name)
 
 
 @router.post("/profile", response_model=MpPersonOut)

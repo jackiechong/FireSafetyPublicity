@@ -21,15 +21,14 @@
         bindtap="onPickOrg"
       >
         <view class="org-name">{{item.name}}</view>
-        <view class="org-type">{{orgTypeName(item.org_type)}}</view>
+        <view class="org-type">{{item.district_name || ''}} · {{orgTypeName(item.org_type)}}</view>
       </view>
     </scroll-view>
 
-    <view wx:if="{{!selectedOrg && orgKeyword}}" class="selected-tip">未选择已有单位，将按输入内容新增单位</view>
-    <view class="label">单位类型 <text class="req">*</text></view>
-    <picker mode="selector" range="{{customOrgTypeOptions}}" value="{{customOrgTypeIndex}}" bindchange="onCustomOrgTypeChange">
-      <view class="picker-val">{{customOrgTypeOptions[customOrgTypeIndex] || '请选择单位类型'}}</view>
-    </picker>
+    <view wx:if="{{selectedOrg}}" class="selected-tip">
+      已选择：{{selectedOrg.name}}，类型：{{orgTypeName(selectedOrg.org_type)}}
+    </view>
+    <view wx:elif="{{orgKeyword}}" class="selected-tip">未选择已有单位，将按输入内容新增单位，单位类型默认归为其他部门</view>
 
     <view class="label">姓名 <text class="req">*</text></view>
     <input class="input" placeholder="真实姓名" value="{{name}}" bindinput="onName" />

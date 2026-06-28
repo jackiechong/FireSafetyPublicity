@@ -64,10 +64,12 @@ from app.schemas import (
     StatsOrgCompletionItem,
     StatsOrgInDistrictItem,
     StatsPersonItem,
+    StatsPersonTrainingItem,
     StatsSearchItem,
     StatsTopicSummaryItem,
     StatsTypeInDistrictItem,
     StatsTrainingSummaryItem,
+    TrainingAttendancePersonItem,
     SuggestItem,
     Token,
     TrainingSessionCreate,
@@ -138,6 +140,38 @@ def _apply_time_range(query, start: Optional[datetime], end: Optional[datetime])
 
 def _attendance_org_id():
     return func.coalesce(TrainingAttendance.organization_id, TrainingSession.organization_id)
+
+
+def _ensure_training_access(sess: TrainingSession, admin: AdminUser) -> None:
+    if admin.role == AdminRole.brigade and sess.brigade_id != admin.brigade_id:
+        raise HTTPException(403, "无权操作该培训")
+
+
+def _attendance_rows_for_session(db: Session, session_id: int) -> list[TrainingAttendancePersonItem]:
+    att_org_id = _attendance_org_id()
+    rows = (
+        db.query(TrainingAttendance, Person, Organization)
+        .select_from(TrainingAttendance)
+        .join(Person, Person.id == TrainingAttendance.person_id)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .outerjoin(Organization, Organization.id == att_org_id)
+        .filter(TrainingAttendance.session_id == session_id)
+        .order_by(Organization.name, Person.name, Person.id)
+        .all()
+    )
+    return [
+        TrainingAttendancePersonItem(
+            index=i,
+            person_id=p.id,
+            organization_name=o.name if o else "",
+            name=p.name or "",
+            job_title=p.job_title,
+            phone=p.phone or "",
+            duration_minutes=int(a.duration_minutes or 0),
+            checked_in_at=a.checked_in_at,
+        )
+        for i, (a, p, o) in enumerate(rows, start=1)
+    ]
 
 
 def _xml_text(value) -> str:
@@ -749,17 +783,21 @@ def list_trainings(
     db: Session = Depends(get_db),
     brigade_id: Optional[int] = None,
     organization_id: Optional[int] = None,
+    q: Optional[str] = None,
 ):
     deactivate_expired_sessions(db)
-    q = db.query(TrainingSession)
+    query = db.query(TrainingSession)
     bid = brigade_filter_brigade_id(admin)
     if bid is not None:
-        q = q.filter(TrainingSession.brigade_id == bid)
+        query = query.filter(TrainingSession.brigade_id == bid)
     elif brigade_id is not None:
-        q = q.filter(TrainingSession.brigade_id == brigade_id)
+        query = query.filter(TrainingSession.brigade_id == brigade_id)
     if organization_id is not None:
-        q = q.filter(TrainingSession.organization_id == organization_id)
-    return q.order_by(TrainingSession.start_at.desc()).limit(500).all()
+        query = query.filter(TrainingSession.organization_id == organization_id)
+    if q:
+        like = f"%{q.strip()}%"
+        query = query.filter(TrainingSession.title.like(like))
+    return query.order_by(TrainingSession.start_at.desc()).limit(500).all()
 
 
 def _default_training_organization(db: Session, brigade_id: int) -> Optional[Organization]:
@@ -843,6 +881,50 @@ def patch_training(
     db.commit()
     db.refresh(sess)
     return sess
+
+
+@router.post("/trainings/{session_id}/end", response_model=TrainingSessionOut)
+def end_training(
+    session_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+):
+    sess = db.get(TrainingSession, session_id)
+    if not sess:
+        raise HTTPException(404, "培训不存在")
+    _ensure_training_access(sess, admin)
+    sess.is_active = False
+    sess.end_at = datetime.utcnow()
+    db.commit()
+    db.refresh(sess)
+    return sess
+
+
+@router.delete("/trainings/{session_id}", status_code=204)
+def delete_training(
+    session_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+):
+    sess = db.get(TrainingSession, session_id)
+    if not sess:
+        raise HTTPException(404, "培训不存在")
+    _ensure_training_access(sess, admin)
+    db.delete(sess)
+    db.commit()
+
+
+@router.get("/trainings/{session_id}/attendances", response_model=List[TrainingAttendancePersonItem])
+def list_training_attendances(
+    session_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+):
+    sess = db.get(TrainingSession, session_id)
+    if not sess:
+        raise HTTPException(404, "培训不存在")
+    _ensure_training_access(sess, admin)
+    return _attendance_rows_for_session(db, session_id)
 
 
 def _build_quick_training_out(s: TrainingSession, db: Session) -> QuickTrainingOut:
@@ -1385,6 +1467,8 @@ def _summary_item(row) -> StatsTrainingSummaryItem:
         brigade_name=row.brigade_name or "",
         organization_name=row.org_name or "",
         topic_name=row.topic_name,
+        duration_minutes=int(sess.duration_minutes or 0),
+        is_active=bool(sess.is_active),
     )
 
 
@@ -1406,6 +1490,38 @@ def stats_training_summary(
         )
     rows = q.order_by(TrainingSession.start_at.desc()).limit(1000).all()
     return [_summary_item(r) for r in rows]
+
+
+@router.get("/stats/trainings-by-district", response_model=List[StatsTrainingSummaryItem])
+def stats_trainings_by_district(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    district_id: int = Query(..., ge=1),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+):
+    bid = brigade_filter_brigade_id(admin)
+    att_org_id = _attendance_org_id()
+    q = (
+        db.query(
+            TrainingSession,
+            Organization.name.label("org_name"),
+            Brigade.name.label("brigade_name"),
+            TrainingTopicOption.name.label("topic_name"),
+            func.count(func.distinct(TrainingAttendance.person_id)).label("person_count"),
+        )
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .join(Organization, Organization.id == att_org_id)
+        .join(Brigade, Brigade.id == TrainingSession.brigade_id)
+        .outerjoin(TrainingTopicOption, TrainingTopicOption.id == TrainingSession.topic_id)
+        .filter(Organization.district_id == district_id)
+        .group_by(TrainingSession.id, Organization.name, Brigade.name, TrainingTopicOption.name)
+    )
+    if bid is not None:
+        q = q.filter(TrainingSession.brigade_id == bid)
+    q = _apply_time_range(q, start, end)
+    return [_summary_item(r) for r in q.order_by(TrainingSession.start_at.desc()).limit(500).all()]
 
 
 @router.get("/stats/by-job-title", response_model=StatsJobTitleSummary)
@@ -1558,6 +1674,25 @@ def export_training_summary(
         "training-summary.xlsx",
         ["培训名称", "培训开展日期", "培训人数", "培训主题", "开展大队", "单位名称"],
         [[r[0].title, r[0].start_at, int(r.person_count or 0), r.topic_name or "", r.brigade_name or "", r.org_name or ""] for r in rows],
+    )
+
+
+@router.get("/exports/training-attendance/{session_id}.xlsx")
+def export_training_attendance(
+    session_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+):
+    sess = db.get(TrainingSession, session_id)
+    if not sess:
+        raise HTTPException(404, "培训不存在")
+    _ensure_training_access(sess, admin)
+    rows = _attendance_rows_for_session(db, session_id)
+    filename = f"training-attendance-{session_id}.xlsx"
+    return _xlsx_response(
+        filename,
+        ["序号", "单位", "姓名", "职务", "电话"],
+        [[r.index, r.organization_name, r.name, r.job_title or "", r.phone] for r in rows],
     )
 
 
@@ -1982,12 +2117,49 @@ def manage_person_profile(
     person.district_id = body.district_id
     person.organization_id = body.organization_id
     person.job_title = body.job_title.strip() if body.job_title else None
-    person.person_category = body.person_category.strip() if body.person_category else None
+    if "person_category" in body.model_fields_set:
+        person.person_category = body.person_category.strip() if body.person_category else None
     if admin.role == AdminRole.detachment:
         _sync_person_admin(person, org, body.is_admin, db)
     db.commit()
     db.refresh(person)
     return _person_out(person, db)
+
+
+@router.get("/persons/{person_id}/trainings", response_model=List[StatsPersonTrainingItem])
+def admin_person_trainings(
+    person_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+):
+    person = db.get(Person, person_id)
+    if not person:
+        raise HTTPException(404, "人员不存在")
+    att_org_id = _attendance_org_id()
+    q = (
+        db.query(TrainingAttendance, TrainingSession, Organization, District)
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .join(Organization, Organization.id == att_org_id)
+        .join(District, District.id == Organization.district_id)
+        .filter(TrainingAttendance.person_id == person_id)
+    )
+    bid = brigade_filter_brigade_id(admin)
+    if bid is not None:
+        q = q.filter(TrainingSession.brigade_id == bid)
+    rows = q.order_by(TrainingSession.start_at.desc()).limit(300).all()
+    return [
+        StatsPersonTrainingItem(
+            session_id=s.id,
+            title=s.title,
+            start_at=s.start_at,
+            duration_minutes=int(a.duration_minutes or 0),
+            organization_name=o.name,
+            district_name=d.name,
+            location=s.location,
+        )
+        for a, s, o, d in rows
+    ]
 
 
 @router.patch("/persons/{person_id}/rebind", response_model=AdminPersonOut)
@@ -2015,7 +2187,8 @@ def rebind_person_profile(
     person.district_id = body.district_id
     person.organization_id = body.organization_id
     person.job_title = body.job_title.strip() if body.job_title else None
-    person.person_category = body.person_category.strip() if body.person_category else None
+    if "person_category" in body.model_fields_set:
+        person.person_category = body.person_category.strip() if body.person_category else None
     db.commit()
     db.refresh(person)
     return _person_out(person, db)

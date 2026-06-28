@@ -61,7 +61,7 @@
         </el-card>
       </el-col>
       <el-col :xs="12" :sm="6">
-        <el-card shadow="hover" class="sum-card">
+        <el-card shadow="hover" class="sum-card clickable" @click="openDistrictTrainings">
           <div class="sum-label">{{ districtFilter ? "当前区县培训场次" : "全市培训场次" }}</div>
           <div class="sum-value">{{ displaySessionCount }}</div>
         </el-card>
@@ -165,6 +165,23 @@
         <el-button type="primary" :loading="personRebindSaving" @click="submitPersonRebind">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="districtTrainingVisible" title="当前区县培训场次" width="760px" destroy-on-close>
+      <el-table :data="districtTrainingRows" border stripe v-loading="districtTrainingLoading" size="small">
+        <el-table-column prop="title" label="会议名称" min-width="200" />
+        <el-table-column label="开展时间" width="160">
+          <template #default="{ row }">{{ formatTime(row.start_at) }}</template>
+        </el-table-column>
+        <el-table-column prop="person_count" label="人数" width="90" />
+        <el-table-column prop="topic_name" label="主题" min-width="120">
+          <template #default="{ row }">{{ row.topic_name || "未分类" }}</template>
+        </el-table-column>
+        <el-table-column prop="brigade_name" label="主办单位" min-width="130" />
+      </el-table>
+      <template #footer>
+        <el-button @click="districtTrainingVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -202,6 +219,9 @@ const personRebindForm = reactive({
 const searchLegacyHintShown = ref(false);
 const periodMode = ref("year");
 const periodValue = ref(new Date());
+const districtTrainingVisible = ref(false);
+const districtTrainingLoading = ref(false);
+const districtTrainingRows = ref([]);
 
 const canRebindPersons = computed(() => currentAdmin.value?.role === "detachment");
 
@@ -259,6 +279,10 @@ function apiDate(dt) {
   const m = String(dt.getMonth() + 1).padStart(2, "0");
   const d = String(dt.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}T00:00:00`;
+}
+
+function formatTime(iso) {
+  return iso ? String(iso).replace("T", " ").slice(0, 16) : "";
 }
 
 function statsParams(extra = {}) {
@@ -573,6 +597,23 @@ async function onOrgChange() {
   }
 }
 
+async function openDistrictTrainings() {
+  if (!districtFilter.value || Number(districtFilter.value) <= 0) {
+    ElMessage.info("请先选择一个区县");
+    return;
+  }
+  districtTrainingVisible.value = true;
+  districtTrainingLoading.value = true;
+  try {
+    const { data } = await http.get("/api/admin/stats/trainings-by-district", {
+      params: statsParams({ district_id: Number(districtFilter.value) }),
+    });
+    districtTrainingRows.value = data || [];
+  } finally {
+    districtTrainingLoading.value = false;
+  }
+}
+
 function openPersonRebind(row) {
   personRebindId.value = row.person_id;
   personRebindForm.name = row.name || "";
@@ -679,6 +720,9 @@ h2 {
 }
 .sum-card {
   text-align: center;
+}
+.sum-card.clickable {
+  cursor: pointer;
 }
 .sum-label {
   font-size: 13px;

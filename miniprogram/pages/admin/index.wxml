@@ -53,6 +53,9 @@
       <button wx:if="{{item.is_active}}" size="mini" class="end-btn" data-id="{{item.id}}" catchtap="onEndTraining">
         提前结束
       </button>
+      <button size="mini" class="delete-btn" data-id="{{item.id}}" catchtap="onDeleteTraining">
+        删除
+      </button>
     </view>
   </block>
 

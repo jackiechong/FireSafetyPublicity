@@ -12,6 +12,7 @@ from app.deps import brigade_filter_brigade_id, get_current_mp_admin, get_curren
 from app.models import AdminRole, AdminUser, AdminWxBindCode, AdminWxBinding, Brigade, District, Organization, Person
 from app.models import TrainingAttendance, TrainingSession
 from app.routers.admin import _attendance_org_id, _build_quick_training_out, _org_type_name, create_training_quick
+from app.routers.admin import _ensure_training_access
 from app.routers.admin import stats_by_district, stats_orgs_by_district, stats_persons_by_organization, stats_types_by_district
 from app.schemas import (
     DistrictOut,
@@ -414,3 +415,17 @@ def mp_admin_patch_training(
     db.commit()
     db.refresh(sess)
     return sess
+
+
+@router.delete("/trainings/{session_id}", status_code=204)
+def mp_admin_delete_training(
+    session_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
+    db: Session = Depends(get_db),
+):
+    sess = db.get(TrainingSession, session_id)
+    if not sess:
+        raise HTTPException(404, "培训不存在")
+    _ensure_training_access(sess, admin)
+    db.delete(sess)
+    db.commit()

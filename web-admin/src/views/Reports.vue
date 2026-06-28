@@ -31,7 +31,11 @@
     <section class="panel">
       <h3>培训清单</h3>
       <el-table :data="summary" border stripe v-loading="loading">
-        <el-table-column prop="title" label="培训名称" min-width="180" />
+        <el-table-column label="培训名称" min-width="180">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="exportAttendance(row)">{{ row.title }}</el-button>
+          </template>
+        </el-table-column>
         <el-table-column label="开展日期" width="170">
           <template #default="{ row }">{{ fmt(row.start_at) }}</template>
         </el-table-column>
@@ -171,6 +175,13 @@ async function exportSummary() {
     responseType: "blob",
   });
   saveBlob(data, "training-summary.xlsx");
+}
+
+async function exportAttendance(row) {
+  const { data } = await http.get(`/api/admin/exports/training-attendance/${row.session_id}.xlsx`, {
+    responseType: "blob",
+  });
+  saveBlob(data, `${row.title || "培训"}-签到簿.xlsx`);
 }
 
 function saveBlob(data, name) {

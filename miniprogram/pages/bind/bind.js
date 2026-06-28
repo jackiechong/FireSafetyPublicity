@@ -10,8 +10,6 @@ Page({
     orgList: [],
     orgKeyword: "",
     selectedOrg: null,
-    customOrgType: "other_department",
-    customOrgTypeIndex: 0,
     customOrgTypeOptions: [],
     customOrgTypeValues: [],
 
@@ -46,8 +44,6 @@ Page({
       this.setData({
         customOrgTypeOptions: typeRows.map((x) => x.name),
         customOrgTypeValues: typeRows.map((x) => x.code),
-        customOrgType: typeRows[0].code || "other_department",
-        customOrgTypeIndex: 0,
         jobTitleOptions: (titles || []).map((x) => x.name),
       });
     } catch (e) {
@@ -73,11 +69,11 @@ Page({
 
   async loadOrgs(keyword) {
     const { districtId } = this.data;
-    if (!districtId) return;
     try {
       const q = encodeURIComponent(String(keyword || "").trim());
+      const districtParam = districtId ? `district_id=${districtId}&` : "";
       const list = await request({
-        url: `/api/mp/organizations?district_id=${districtId}&q=${q}`,
+        url: `/api/mp/organizations?${districtParam}q=${q}`,
       });
       this.setData({ orgList: list || [] });
     } catch (e) {
@@ -108,17 +104,13 @@ Page({
     const id = Number(e.currentTarget.dataset.id);
     const org = this.data.orgList.find((x) => Number(x.id) === id);
     if (!org) return;
+    const districtIndex = this.data.districtList.findIndex((d) => Number(d.id) === Number(org.district_id));
     this.setData({
       selectedOrg: org,
       orgKeyword: org.name,
-    });
-  },
-
-  onCustomOrgTypeChange(e) {
-    const idx = Number(e.detail.value);
-    this.setData({
-      customOrgTypeIndex: idx,
-      customOrgType: this.data.customOrgTypeValues[idx] || "other_department",
+      orgList: [],
+      districtId: org.district_id || this.data.districtId,
+      districtIndex: districtIndex >= 0 ? districtIndex : this.data.districtIndex,
     });
   },
 
@@ -150,7 +142,6 @@ Page({
       selectedOrg,
       orgKeyword,
       jobTitle,
-      customOrgType,
     } = this.data;
     if (!districtId) {
       wx.showToast({ title: "请选择区县", icon: "none" });
@@ -184,7 +175,6 @@ Page({
           data: {
             district_id: districtId,
             name: cleanOrgName,
-            org_type: customOrgType,
           },
         });
         organization_id = created.id;

@@ -3,15 +3,20 @@
     <section class="topbar">
       <div>
         <h1>培训数据总览</h1>
-        <p>{{ scopeText }} · {{ year }} 年度培训运行情况</p>
+        <p>{{ scopeText }} · {{ periodLabel }}培训运行情况</p>
       </div>
       <div class="top-actions">
+        <el-radio-group v-model="periodMode" @change="onPeriodModeChange">
+          <el-radio-button label="year">年</el-radio-button>
+          <el-radio-button label="month">月</el-radio-button>
+        </el-radio-group>
         <el-date-picker
-          v-model="year"
-          type="year"
-          value-format="YYYY"
+          v-model="periodValue"
+          :type="periodMode"
+          :format="periodMode === 'year' ? 'YYYY年' : 'YYYY年MM月'"
+          :value-format="periodMode === 'year' ? 'YYYY' : 'YYYY-MM'"
           :clearable="false"
-          style="width: 128px"
+          style="width: 140px"
           @change="loadAll"
         />
         <el-button type="primary" @click="loadAll">刷新</el-button>
@@ -20,7 +25,7 @@
 
     <section class="metrics">
       <div class="metric-panel primary">
-        <span>年度培训时长</span>
+        <span>{{ periodMode === "year" ? "年度" : "月度" }}培训时长</span>
         <strong>{{ formatTrainingHours(totalMinutes) }}</strong>
         <small>{{ totalSessions }} 场培训</small>
       </div>
@@ -35,7 +40,7 @@
         <small>{{ orgTotal }} 个单位纳入管理</small>
       </div>
       <div class="metric-panel">
-        <span>本月培训</span>
+        <span>{{ periodMode === "year" ? "本月培训" : "本期培训" }}</span>
         <strong>{{ monthSessions }}</strong>
         <small>{{ formatTrainingHours(monthMinutes) }}</small>
       </div>
@@ -45,7 +50,7 @@
       <div class="panel span-2">
         <div class="panel-head">
           <h2>区县培训时长排行</h2>
-          <span>按年度累计学时</span>
+          <span>按当前周期累计学时</span>
         </div>
         <div ref="districtChartRef" class="chart large" />
       </div>
@@ -138,7 +143,8 @@ import * as echarts from "echarts";
 import http from "../api/http";
 import { formatTrainingHours } from "../utils/duration";
 
-const year = ref(String(new Date().getFullYear()));
+const periodMode = ref("year");
+const periodValue = ref(String(new Date().getFullYear()));
 const currentAdmin = ref(null);
 const districtStats = ref([]);
 const topicStats = ref([]);
@@ -154,6 +160,10 @@ let districtChart;
 let topicChart;
 
 const scopeText = computed(() => (currentAdmin.value?.role === "detachment" ? "葫芦岛支队" : "本大队"));
+const periodLabel = computed(() => {
+  const raw = String(periodValue.value || "");
+  return periodMode.value === "year" ? `${raw} 年度` : `${raw.replace("-", " 年 ")} 月`;
+});
 const totalMinutes = computed(() => districtStats.value.reduce((s, x) => s + Number(x.total_minutes || 0), 0));
 const totalSessions = computed(() => districtStats.value.reduce((s, x) => s + Number(x.session_count || 0), 0));
 const personTotal = computed(() => persons.value.length);
@@ -171,7 +181,7 @@ const todayRange = computed(() => {
 });
 
 const monthRange = computed(() => {
-  const d = new Date();
+  const d = normalizePeriodStart();
   const start = new Date(d.getFullYear(), d.getMonth(), 1);
   const end = new Date(start);
   end.setMonth(start.getMonth() + 1);
@@ -183,12 +193,38 @@ const todayPeople = computed(() => trainings.value.filter((x) => inRange(x.start
 const monthSessions = computed(() => trainings.value.filter((x) => inRange(x.start_at, monthRange.value)).length);
 const monthMinutes = computed(() => trainings.value.filter((x) => inRange(x.start_at, monthRange.value)).reduce((s, x) => s + Number(x.duration_minutes || 0) * Number(x.person_count || 0), 0));
 
-function yearParams() {
-  const y = Number(year.value);
+function normalizePeriodStart() {
+  const raw = String(periodValue.value || "");
+  if (periodMode.value === "month") {
+    const [y, m] = raw.split("-").map(Number);
+    return new Date(y, (m || 1) - 1, 1);
+  }
+  return new Date(Number(raw), 0, 1);
+}
+
+function periodParams() {
+  const startDate = normalizePeriodStart();
+  const endDate = new Date(startDate);
+  if (periodMode.value === "month") endDate.setMonth(startDate.getMonth() + 1);
+  else endDate.setFullYear(startDate.getFullYear() + 1);
+  const y = startDate.getFullYear();
+  const m = String(startDate.getMonth() + 1).padStart(2, "0");
+  const d = String(startDate.getDate()).padStart(2, "0");
+  const ey = endDate.getFullYear();
+  const em = String(endDate.getMonth() + 1).padStart(2, "0");
+  const ed = String(endDate.getDate()).padStart(2, "0");
   return {
-    start: `${y}-01-01T00:00:00`,
-    end: `${y + 1}-01-01T00:00:00`,
+    start: `${y}-${m}-${d}T00:00:00`,
+    end: `${ey}-${em}-${ed}T00:00:00`,
   };
+}
+
+async function onPeriodModeChange() {
+  const now = new Date();
+  periodValue.value = periodMode.value === "year"
+    ? String(now.getFullYear())
+    : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  await loadAll();
 }
 
 function fmt(v) {
@@ -202,7 +238,7 @@ function inRange(iso, range) {
 }
 
 async function loadAll() {
-  const params = yearParams();
+  const params = periodParams();
   const [me, districts, topics, summary, people, organizations, jobs] = await Promise.all([
     http.get("/api/admin/me"),
     http.get("/api/admin/stats/by-district", { params }),
@@ -243,7 +279,7 @@ async function loadOrgRanks() {
   const rows = [];
   for (const district_id of districts) {
     try {
-      const { data } = await http.get("/api/admin/stats/orgs-by-district", { params: { ...yearParams(), district_id } });
+      const { data } = await http.get("/api/admin/stats/orgs-by-district", { params: { ...periodParams(), district_id } });
       rows.push(...(data || []));
     } catch {
       /* ignore one district */

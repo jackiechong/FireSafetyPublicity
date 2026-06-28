@@ -65,6 +65,12 @@
   background: #fff3e0;
   color: #d66a00;
 }
+.delete-btn {
+  margin-top: 16rpx;
+  margin-left: 16rpx;
+  background: #ffebee;
+  color: #c62828;
+}
 .meta {
   color: #888;
   font-size: 26rpx;

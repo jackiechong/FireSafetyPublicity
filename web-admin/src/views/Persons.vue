@@ -35,15 +35,16 @@
     </div>
 
     <el-table :data="rows" border stripe v-loading="loading" style="width: 100%">
-      <el-table-column prop="name" label="姓名" width="110" />
+      <el-table-column label="姓名" width="120">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openPersonTrainings(row)">{{ row.name || "—" }}</el-button>
+        </template>
+      </el-table-column>
       <el-table-column prop="phone" label="手机号" width="130" />
       <el-table-column prop="district_name" label="区县" width="130" />
       <el-table-column prop="organization_name" label="所属单位" min-width="220" />
       <el-table-column prop="job_title" label="身份/岗位" min-width="130">
         <template #default="{ row }">{{ row.job_title || "—" }}</template>
-      </el-table-column>
-      <el-table-column prop="person_category" label="人员类别" min-width="130">
-        <template #default="{ row }">{{ row.person_category || "—" }}</template>
       </el-table-column>
       <el-table-column label="管理员" width="160">
         <template #default="{ row }">
@@ -83,10 +84,9 @@
           </el-select>
         </el-form-item>
         <el-form-item label="身份/岗位">
-          <el-input v-model="form.job_title" maxlength="64" placeholder="如：消防安全管理人" />
-        </el-form-item>
-        <el-form-item label="人员类别">
-          <el-input v-model="form.person_category" maxlength="64" placeholder="如：消控室人员" />
+          <el-select v-model="form.job_title" clearable filterable placeholder="请选择身份/岗位" style="width: 100%">
+            <el-option v-for="item in jobTitleSelectOptions" :key="item" :label="item" :value="item" />
+          </el-select>
         </el-form-item>
         <el-form-item v-if="currentAdmin?.role === 'detachment'" label="管理员">
           <el-switch
@@ -102,6 +102,22 @@
         <el-button type="primary" :loading="saving" @click="submitEdit">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="trainingVisible" :title="`${trainingPersonName}的培训记录`" width="760px" destroy-on-close>
+      <el-table :data="trainingRows" border stripe v-loading="trainingLoading" size="small">
+        <el-table-column prop="title" label="培训名称" min-width="180" />
+        <el-table-column label="培训时间" width="160">
+          <template #default="{ row }">{{ formatTime(row.start_at) }}</template>
+        </el-table-column>
+        <el-table-column prop="organization_name" label="参训单位" min-width="180" />
+        <el-table-column prop="district_name" label="区县" width="120" />
+        <el-table-column prop="duration_minutes" label="时长(分)" width="100" />
+        <el-table-column prop="location" label="地点" min-width="120" />
+      </el-table>
+      <template #footer>
+        <el-button @click="trainingVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -114,6 +130,7 @@ const rows = ref([]);
 const districts = ref([]);
 const filterOrgs = ref([]);
 const editOrgs = ref([]);
+const jobTitleOptions = ref([]);
 const keyword = ref("");
 const filterDistrictId = ref();
 const filterOrganizationId = ref();
@@ -122,6 +139,10 @@ const saving = ref(false);
 const currentAdmin = ref(null);
 const editVisible = ref(false);
 const editingId = ref(null);
+const trainingVisible = ref(false);
+const trainingLoading = ref(false);
+const trainingRows = ref([]);
+const trainingPersonName = ref("");
 
 const form = reactive({
   name: "",
@@ -129,12 +150,15 @@ const form = reactive({
   district_id: undefined,
   organization_id: undefined,
   job_title: "",
-  person_category: "",
   is_admin: false,
 });
 
 const canEdit = computed(() => !!currentAdmin.value);
 const districtFilterOptions = computed(() => [{ id: 0, name: "葫芦岛支队" }, ...districts.value]);
+const jobTitleSelectOptions = computed(() => {
+  const current = form.job_title ? [form.job_title] : [];
+  return [...new Set([...jobTitleOptions.value, ...current].filter(Boolean))];
+});
 
 function formatTime(iso) {
   if (!iso) return "—";
@@ -188,7 +212,6 @@ async function openEdit(row) {
     district_id: row.district_id,
     organization_id: row.organization_id,
     job_title: row.job_title || "",
-    person_category: row.person_category || "",
     is_admin: !!row.is_admin,
   });
   editOrgs.value = row.district_id ? await loadOrgs(row.district_id) : [];
@@ -217,7 +240,6 @@ async function submitEdit() {
       district_id: Number(form.district_id),
       organization_id: Number(form.organization_id),
       job_title: form.job_title.trim() || null,
-      person_category: form.person_category.trim() || null,
       is_admin: !!form.is_admin,
     });
     ElMessage.success("人员信息已保存");
@@ -230,13 +252,28 @@ async function submitEdit() {
   }
 }
 
+async function openPersonTrainings(row) {
+  trainingPersonName.value = row.name || "人员";
+  trainingRows.value = [];
+  trainingVisible.value = true;
+  trainingLoading.value = true;
+  try {
+    const { data } = await http.get(`/api/admin/persons/${row.person_id}/trainings`);
+    trainingRows.value = data || [];
+  } finally {
+    trainingLoading.value = false;
+  }
+}
+
 onMounted(async () => {
-  const [me, dist] = await Promise.all([
+  const [me, dist, jobs] = await Promise.all([
     http.get("/api/admin/me"),
     http.get("/api/admin/districts"),
+    http.get("/api/admin/job-titles"),
   ]);
   currentAdmin.value = me.data;
   districts.value = dist.data || [];
+  jobTitleOptions.value = (jobs.data || []).map((x) => x.name).filter(Boolean);
   await load();
 });
 </script>

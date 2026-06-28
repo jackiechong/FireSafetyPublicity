@@ -353,6 +353,8 @@ class MpOrgListItem(BaseModel):
     id: int
     name: str
     org_type: str
+    district_id: Optional[int] = None
+    district_name: Optional[str] = None
 
 
 class MpTrainingItem(BaseModel):
@@ -416,6 +418,17 @@ class StatsPersonTrainingItem(BaseModel):
     organization_name: str
     district_name: str
     location: Optional[str] = None
+
+
+class TrainingAttendancePersonItem(BaseModel):
+    index: int
+    person_id: int
+    organization_name: str
+    name: str
+    job_title: Optional[str] = None
+    phone: str
+    duration_minutes: int
+    checked_in_at: Optional[datetime] = None
 
 
 class AdminPersonRebindIn(BaseModel):
@@ -482,6 +495,8 @@ class StatsTrainingSummaryItem(BaseModel):
     brigade_name: str
     organization_name: str
     topic_name: Optional[str] = None
+    duration_minutes: int = 0
+    is_active: bool = True
 
 
 class StatsJobTitleSummary(BaseModel):
