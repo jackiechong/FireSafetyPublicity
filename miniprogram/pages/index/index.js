@@ -20,6 +20,7 @@ const COLOR_MAP = {
   system: "green",
   equipment: "red",
 };
+const ACTIVITY_CATEGORY = { code: "activity", name: "热门活动" };
 
 function normalizeArticle(row = {}) {
   return {
@@ -106,9 +107,16 @@ Page({
         })
       );
       const allArticles = articleGroups.flat();
+      let activityArticles = [];
+      try {
+        const activityRows = await request({ url: `/api/mp/knowledge-articles?category=${ACTIVITY_CATEGORY.code}` });
+        activityArticles = (activityRows || []).map(normalizeArticle);
+      } catch {
+        activityArticles = [];
+      }
       this.setData({
         modules,
-        activityArticles: allArticles.length ? allArticles.slice(0, 2) : this.data.activityArticles,
+        activityArticles: activityArticles.length ? activityArticles.slice(0, 2) : allArticles.length ? allArticles.slice(0, 2) : this.data.activityArticles,
       });
     } catch {
       // 保留默认可浏览内容。
@@ -122,8 +130,8 @@ Page({
     this.openCategory(item);
   },
 
-  scrollToActivities() {
-    wx.pageScrollTo({ selector: "#activities", duration: 250 });
+  openActivities() {
+    this.openCategory(ACTIVITY_CATEGORY);
   },
 
   openCategory(item) {

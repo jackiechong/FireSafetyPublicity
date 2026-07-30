@@ -91,6 +91,7 @@ DEFAULT_KNOWLEDGE_CATEGORIES: list[tuple[str, str]] = [
     ("video", "宣传视频"),
     ("system", "制度"),
     ("equipment", "器材使用"),
+    ("activity", "热门活动"),
 ]
 
 DEMO_ORG_SPECS: list[tuple[str, OrgType, str, str]] = [

@@ -1,10 +1,9 @@
 <view class="home">
   <view class="hero">
     <image wx:if="{{bannerImageUrl}}" class="hero-bg" src="{{bannerImageUrl}}" mode="aspectFill" />
-    <view wx:if="{{bannerImageUrl}}" class="hero-mask"></view>
-    <view class="hero-title">葫消培</view>
-    <view class="hero-main">关注消防 生命至上</view>
-    <view class="hero-sub">全民消防 生命至上</view>
+    <view wx:if="{{!bannerImageUrl}}" class="hero-title">葫消培</view>
+    <view wx:if="{{!bannerImageUrl}}" class="hero-main">关注消防 生命至上</view>
+    <view wx:if="{{!bannerImageUrl}}" class="hero-sub">全民消防 生命至上</view>
     <view wx:if="{{!bannerImageUrl}}" class="hero-scene">
       <view class="sea"></view>
       <view class="city"></view>
@@ -37,14 +36,14 @@
 
   <view id="activities" class="section-head">
     <text>热门活动</text>
-    <text class="more" bindtap="scrollToActivities">更多 ></text>
+    <text class="more" bindtap="openActivities">更多 ></text>
   </view>
   <view class="activity-row">
-    <view wx:for="{{activityArticles}}" wx:key="id" class="activity-card {{index === 0 ? 'warm' : 'cool'}}">
+    <view wx:for="{{activityArticles}}" wx:key="id" class="activity-card {{index === 0 ? 'warm' : 'cool'}}" bindtap="openActivities">
       <image wx:if="{{item.image_url}}" class="activity-bg" src="{{item.image_url}}" mode="aspectFill" />
       <view class="activity-title">{{item.title}}</view>
       <view class="activity-sub">{{item.content}}</view>
-      <button size="mini" bindtap="goJoin">立即参与</button>
+      <view class="activity-link">查看详情</view>
     </view>
   </view>
 
@@ -52,25 +51,26 @@
 
   <view class="bottom-nav">
     <view class="nav-item active">
-      <view class="nav-icon">⌂</view>
-      <view>首页</view>
+      <view class="nav-icon">🏠</view>
+      <view class="nav-label">首页</view>
     </view>
     <view class="nav-item" bindtap="goKnowledge">
-      <view class="nav-icon">□</view>
-      <view>知识</view>
+      <view class="nav-icon">📖</view>
+      <view class="nav-label">知识</view>
     </view>
-    <view class="join-wrap">
-      <view class="join-btn {{loadingAction === 'join' ? 'loading' : ''}}" bindtap="goJoin">
-        <text>{{loadingAction === 'join' ? '加载中' : '加入培训'}}</text>
+    <view class="nav-item join-nav {{loadingAction === 'join' ? 'loading' : ''}}" bindtap="goJoin">
+      <view class="join-icon">
+        <text>➕</text>
       </view>
+      <view class="nav-label">{{loadingAction === 'join' ? '加载中' : '加入培训'}}</view>
     </view>
-    <view class="nav-item" bindtap="scrollToActivities">
-      <view class="nav-icon">▣</view>
-      <view>活动</view>
+    <view class="nav-item" bindtap="openActivities">
+      <view class="nav-icon">📅</view>
+      <view class="nav-label">活动</view>
     </view>
     <view class="nav-item" bindtap="goMe">
-      <view class="nav-icon">○</view>
-      <view>我的</view>
+      <view class="nav-icon">👤</view>
+      <view class="nav-label">我的</view>
     </view>
   </view>
 </view>
