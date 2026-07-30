@@ -1,10 +1,74 @@
-<view class="wrap">
+<view class="home">
   <view class="hero">
-    <view class="title">葫芦岛市消防救援支队</view>
-    <view class="sub">消防培训</view>
+    <view class="hero-title">葫消培</view>
+    <view class="hero-main">关注消防 生命至上</view>
+    <view class="hero-sub">全民消防 生命至上</view>
+    <view class="hero-scene">
+      <view class="sea"></view>
+      <view class="city"></view>
+      <view class="mascot">
+        <view class="helmet"></view>
+        <view class="face"></view>
+        <view class="body"></view>
+      </view>
+    </view>
   </view>
-  <view class="card">
-    <button class="btn-primary" loading="{{loading}}" bindtap="onLogin">微信登录</button>
-    <view class="hint">首次使用登录后需填写姓名与手机号完成实名</view>
+
+  <view class="module-card">
+    <view
+      wx:for="{{modules}}"
+      wx:key="key"
+      class="module-item"
+      data-index="{{index}}"
+      bindtap="onPickModule"
+    >
+      <view class="module-icon {{item.color}}">{{item.icon}}</view>
+      <view class="module-title">{{item.title}}</view>
+    </view>
+  </view>
+
+  <view class="notice-card">
+    <text class="notice-label">通知公告</text>
+    <text class="notice-text">培训活动、学习内容与签到记录服务已开放</text>
+    <text class="notice-date">07-30</text>
+  </view>
+
+  <view id="activities" class="section-head">
+    <text>热门活动</text>
+    <text class="more" bindtap="scrollToActivities">更多 ></text>
+  </view>
+  <view class="activity-row">
+    <view wx:for="{{activityArticles}}" wx:key="id" class="activity-card {{index === 0 ? 'warm' : 'cool'}}">
+      <image wx:if="{{item.image_url}}" class="activity-bg" src="{{item.image_url}}" mode="aspectFill" />
+      <view class="activity-title">{{item.title}}</view>
+      <view class="activity-sub">{{item.content}}</view>
+      <button size="mini" bindtap="goJoin">立即参与</button>
+    </view>
+  </view>
+
+  <view class="bottom-space"></view>
+
+  <view class="bottom-nav">
+    <view class="nav-item active">
+      <view class="nav-icon">⌂</view>
+      <view>首页</view>
+    </view>
+    <view class="nav-item" bindtap="goKnowledge">
+      <view class="nav-icon">□</view>
+      <view>知识</view>
+    </view>
+    <view class="join-wrap">
+      <view class="join-btn {{loadingAction === 'join' ? 'loading' : ''}}" bindtap="goJoin">
+        <text>{{loadingAction === 'join' ? '加载中' : '加入培训'}}</text>
+      </view>
+    </view>
+    <view class="nav-item" bindtap="scrollToActivities">
+      <view class="nav-icon">▣</view>
+      <view>活动</view>
+    </view>
+    <view class="nav-item" bindtap="goMe">
+      <view class="nav-icon">○</view>
+      <view>我的</view>
+    </view>
   </view>
 </view>

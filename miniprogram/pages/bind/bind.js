@@ -22,6 +22,8 @@ Page({
 
     loading: false,
     redirectSessionId: 0,
+    redirectToCheckin: false,
+    privacyAgreed: false,
   },
 
   async onLoad(options = {}) {
@@ -30,7 +32,10 @@ Page({
       wx.redirectTo({ url: "/pages/index/index" });
       return;
     }
-    this.setData({ redirectSessionId: Number(options.session_id || 0) });
+    this.setData({
+      redirectSessionId: Number(options.session_id || 0),
+      redirectToCheckin: options.redirect === "checkin",
+    });
     await Promise.all([this.loadDictionaries(), this.loadDistricts()]);
   },
 
@@ -133,6 +138,13 @@ Page({
   onPhone(e) {
     this.setData({ phone: e.detail.value });
   },
+  onPrivacyChange(e) {
+    const values = e.detail.value || [];
+    this.setData({ privacyAgreed: values.indexOf("agree") >= 0 });
+  },
+  openPrivacy() {
+    wx.navigateTo({ url: "/pages/privacy/privacy" });
+  },
 
   async submit() {
     const {
@@ -142,7 +154,12 @@ Page({
       selectedOrg,
       orgKeyword,
       jobTitle,
+      privacyAgreed,
     } = this.data;
+    if (!privacyAgreed) {
+      wx.showToast({ title: "请先阅读并同意隐私政策", icon: "none" });
+      return;
+    }
     if (!districtId) {
       wx.showToast({ title: "请选择区县", icon: "none" });
       return;
@@ -193,6 +210,8 @@ Page({
       wx.showToast({ title: "注册成功" });
       const target = this.data.redirectSessionId
         ? `/pages/checkin/checkin?session_id=${this.data.redirectSessionId}`
+        : this.data.redirectToCheckin
+          ? "/pages/checkin/checkin"
         : "/pages/me/me";
       setTimeout(() => wx.redirectTo({ url: target }), 400);
     } catch (e) {

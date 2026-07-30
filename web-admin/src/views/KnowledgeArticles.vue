@@ -48,6 +48,19 @@
         <template #default="{ row }">{{ categoryName(row.category) }}</template>
       </el-table-column>
       <el-table-column prop="title" label="标题" min-width="180" />
+      <el-table-column label="图片" width="90">
+        <template #default="{ row }">
+          <el-image
+            v-if="row.image_url"
+            :src="row.image_url"
+            fit="cover"
+            style="width: 52px; height: 36px; border-radius: 6px"
+            :preview-src-list="[row.image_url]"
+            preview-teleported
+          />
+          <span v-else class="muted">无</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="sort_order" label="排序" width="90" />
       <el-table-column label="状态" width="90">
         <template #default="{ row }">
@@ -71,6 +84,9 @@
         </el-form-item>
         <el-form-item label="标题" required>
           <el-input v-model="form.title" maxlength="200" />
+        </el-form-item>
+        <el-form-item label="图片地址">
+          <el-input v-model="form.image_url" maxlength="512" placeholder="https://...，用于小程序首页内容卡片展示" />
         </el-form-item>
         <el-form-item label="内容">
           <el-input v-model="form.content" type="textarea" :rows="8" maxlength="20000" show-word-limit />
@@ -106,6 +122,7 @@ const form = reactive({
   category: "knowledge",
   title: "",
   content: "",
+  image_url: "",
   sort_order: 100,
   is_active: true,
 });
@@ -137,6 +154,7 @@ function open(row) {
     category: row?.category || "knowledge",
     title: row?.title || "",
     content: row?.content || "",
+    image_url: row?.image_url || "",
     sort_order: row?.sort_order ?? 100,
     is_active: row?.is_active ?? true,
   });
@@ -150,7 +168,7 @@ async function submit() {
   }
   saving.value = true;
   try {
-    const data = { ...form, title: form.title.trim() };
+    const data = { ...form, title: form.title.trim(), image_url: form.image_url.trim() || null };
     if (editing.value) await http.patch(`/api/admin/knowledge-articles/${editing.value.id}`, data);
     else await http.post("/api/admin/knowledge-articles", data);
     ElMessage.success("已保存");
@@ -268,5 +286,9 @@ p {
 h3 {
   font-size: 1rem;
   margin: 0;
+}
+.muted {
+  color: #999;
+  font-size: 12px;
 }
 </style>

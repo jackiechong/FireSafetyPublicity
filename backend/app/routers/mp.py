@@ -154,7 +154,6 @@ def mp_training_topics(
 
 @router.get("/knowledge-articles", response_model=List[KnowledgeArticleOut])
 def mp_knowledge_articles(
-    _: Annotated[Person, Depends(get_current_person_token)],
     db: Session = Depends(get_db),
     category: str = Query(""),
 ):
@@ -166,7 +165,6 @@ def mp_knowledge_articles(
 
 @router.get("/knowledge-categories", response_model=List[DictionaryOptionOut])
 def mp_knowledge_categories(
-    _: Annotated[Person, Depends(get_current_person_token)],
     db: Session = Depends(get_db),
 ):
     rows = db.query(KnowledgeCategoryOption).filter(KnowledgeCategoryOption.is_active.is_(True)).order_by(KnowledgeCategoryOption.sort_order, KnowledgeCategoryOption.id).all()

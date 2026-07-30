@@ -41,6 +41,14 @@
       <view class="picker-val">{{jobTitle || '请选择职务/岗位'}}</view>
     </picker>
 
+    <checkbox-group class="privacy-row" bindchange="onPrivacyChange">
+      <label class="privacy-label">
+        <checkbox value="agree" checked="{{privacyAgreed}}" color="#3949ab" />
+        <text>我已阅读并同意</text>
+        <text class="privacy-link" catchtap="openPrivacy">《隐私政策与用户协议》</text>
+      </label>
+    </checkbox-group>
+
     <button class="btn-primary" loading="{{loading}}" bindtap="submit">提交注册</button>
   </view>
 </view>

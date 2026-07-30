@@ -17,7 +17,10 @@ function request(options) {
           resolve(res.data);
         } else {
           const msg = (res.data && res.data.detail) || res.errMsg || "请求失败";
-          reject(new Error(typeof msg === "string" ? msg : JSON.stringify(msg)));
+          const err = new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+          err.statusCode = res.statusCode;
+          err.data = res.data;
+          reject(err);
         }
       },
       fail: reject,

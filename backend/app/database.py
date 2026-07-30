@@ -152,12 +152,18 @@ def sqlite_migrate_legacy_person_columns() -> None:
                 category VARCHAR(64) NOT NULL,
                 title VARCHAR(200) NOT NULL,
                 content TEXT NOT NULL DEFAULT '',
+                image_url VARCHAR(512),
                 sort_order INTEGER NOT NULL DEFAULT 100,
                 is_active BOOLEAN NOT NULL DEFAULT 1,
                 created_at DATETIME,
                 updated_at DATETIME
             )
         """))
+        rows = conn.execute(text("PRAGMA table_info(knowledge_articles)")).fetchall()
+        if rows:
+            cols = {r[1] for r in rows}
+            if "image_url" not in cols:
+                conn.execute(text("ALTER TABLE knowledge_articles ADD COLUMN image_url VARCHAR(512)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_knowledge_articles_category ON knowledge_articles(category)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_knowledge_articles_is_active ON knowledge_articles(is_active)"))
 

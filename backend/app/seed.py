@@ -88,7 +88,7 @@ DEFAULT_TRAINING_TOPICS = ["消防负责人培训", "消控室人员培训", "�
 
 DEFAULT_KNOWLEDGE_CATEGORIES: list[tuple[str, str]] = [
     ("knowledge", "消防知识"),
-    ("law", "法律法规"),
+    ("video", "宣传视频"),
     ("system", "制度"),
     ("equipment", "器材使用"),
 ]
@@ -295,6 +295,14 @@ def _ensure_dictionary_options(db: Session) -> None:
         ).first():
             db.add(KnowledgeArticle(category=code, title=title, content="请在后台编辑本栏目内容。", sort_order=idx, is_active=True))
             changed = True
+    legacy_law = db.query(KnowledgeCategoryOption).filter(KnowledgeCategoryOption.code == "law").first()
+    if legacy_law:
+        db.query(KnowledgeArticle).filter(KnowledgeArticle.category == "law").update(
+            {"category": "video"},
+            synchronize_session=False,
+        )
+        db.delete(legacy_law)
+        changed = True
     if changed:
         db.commit()
 

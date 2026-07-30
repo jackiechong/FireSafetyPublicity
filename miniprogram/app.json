@@ -1,19 +1,22 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/category/category",
     "pages/checkin/checkin",
     "pages/bind/bind",
     "pages/me/me",
+    "pages/privacy/privacy",
     "pages/admin/bind",
     "pages/admin/index",
     "pages/admin/stats"
   ],
   "window": {
-    "navigationBarTitleText": "葫芦岛消防培训",
+    "navigationBarTitleText": "葫消培",
     "navigationBarBackgroundColor": "#1a237e",
     "navigationBarTextStyle": "white",
     "backgroundColor": "#f5f7fa"
   },
   "style": "v2",
+  "__usePrivacyCheck__": true,
   "sitemapLocation": "sitemap.json"
 }

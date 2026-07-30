@@ -1,0 +1,91 @@
+.page {
+  min-height: 100vh;
+  padding: 28rpx;
+  background: #f5f7fb;
+  color: #172033;
+}
+
+.header {
+  padding: 22rpx 4rpx 28rpx;
+}
+
+.title {
+  font-size: 40rpx;
+  font-weight: 800;
+}
+
+.subtitle {
+  margin-top: 10rpx;
+  color: #64748b;
+  font-size: 24rpx;
+}
+
+.article-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.article-item {
+  display: flex;
+  gap: 18rpx;
+  padding: 20rpx;
+  border-radius: 18rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 24rpx rgba(20, 53, 107, 0.08);
+}
+
+.article-thumb {
+  flex: none;
+  width: 170rpx;
+  height: 124rpx;
+  border-radius: 14rpx;
+  background: #dbeafe;
+}
+
+.article-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.article-title {
+  color: #111827;
+  font-size: 30rpx;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.article-content {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 10rpx;
+  color: #64748b;
+  font-size: 25rpx;
+  line-height: 1.45;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.state {
+  margin-top: 120rpx;
+  text-align: center;
+  color: #64748b;
+  font-size: 28rpx;
+}
+
+.empty {
+  padding: 70rpx 28rpx;
+  border-radius: 18rpx;
+  background: #fff;
+}
+
+.empty-title {
+  color: #111827;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.empty-text {
+  margin-top: 12rpx;
+  font-size: 25rpx;
+}

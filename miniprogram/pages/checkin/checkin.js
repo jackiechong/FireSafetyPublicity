@@ -64,12 +64,12 @@ Page({
         error: activeList.length ? "" : "今天暂无可加入的培训场次",
       });
     } catch (e) {
-      if (String(e.message || "").includes("完成单位")) {
+      if (e.statusCode === 409 || String(e.message || "").includes("完成单位")) {
         const q = this.data.sessionId ? `?session_id=${this.data.sessionId}` : "";
         wx.redirectTo({ url: `/pages/bind/bind${q}` });
         return;
       }
-      this.setData({ error: e.message || "加载培训场次失败" });
+      this.setData({ activeList: [], selectedSessionId: 0, error: e.message || "加载培训场次失败" });
     } finally {
       this.setData({ loading: false });
     }
@@ -93,7 +93,7 @@ Page({
       this.setData({ result });
       wx.showToast({ title: result.already_checked ? "已签到" : "签到成功" });
     } catch (e) {
-      if (String(e.message || "").includes("完成单位")) {
+      if (e.statusCode === 409 || String(e.message || "").includes("完成单位")) {
         wx.redirectTo({ url: `/pages/bind/bind?session_id=${this.data.sessionId}` });
         return;
       }

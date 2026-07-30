@@ -1,0 +1,34 @@
+<view class="page">
+  <view class="card">
+    <view class="title">隐私政策</view>
+    <view class="paragraph">
+      葫消培小程序用于培训活动浏览、人员信息登记、现场签到、培训记录查询和学习内容展示。
+    </view>
+    <view class="section-title">收集的信息</view>
+    <view class="paragraph">
+      首页浏览不需要登录授权。仅当您主动使用身份登记、加入培训、查看个人记录等功能，并在登记页面自行勾选同意后，小程序会收集并保存您的微信 openid、姓名、手机号、所属区县、所在单位、职务/岗位、培训签到记录、培训时长和操作时间。
+    </view>
+    <view class="section-title">使用目的</view>
+    <view class="paragraph">
+      上述信息仅用于确认参训人员身份、生成个人培训记录、统计培训活动情况、核验管理员身份，以及维护培训活动数据。
+    </view>
+    <view class="section-title">共享与保存</view>
+    <view class="paragraph">
+      管理员可在权限范围内查看与培训活动相关的数据。除依法依规或获得用户授权的情形外，不会向无关第三方提供个人信息。
+    </view>
+    <view class="section-title">您的权利</view>
+    <view class="paragraph">
+      如需查询、更正或删除个人信息，可联系平台管理员处理。
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="title">用户协议</view>
+    <view class="paragraph">
+      使用本小程序时，请确保登记信息真实、准确。不得冒用他人身份签到，不得恶意新增单位或提交虚假培训信息。
+    </view>
+    <view class="paragraph">
+      管理员账号仅限本人使用，应妥善保管绑定码和账号权限。发现异常使用、误绑定或数据错误时，请及时联系上级管理员处理。
+    </view>
+  </view>
+</view>

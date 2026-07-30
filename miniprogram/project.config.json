@@ -2,9 +2,9 @@
   "miniprogramRoot": "./",
   "projectname": "hld-fire-training",
   "description": "葫芦岛市消防救援支队培训实名制",
-  "appid": "wxc2b0e8ae878df3ac",
+  "appid": "wx2e0dbee1ecc7f41e",
   "setting": {
-    "urlCheck": false,
+    "urlCheck": true,
     "es6": true,
     "minified": true,
     "postcss": false,
