@@ -153,6 +153,7 @@ def sqlite_migrate_legacy_person_columns() -> None:
                 title VARCHAR(200) NOT NULL,
                 content TEXT NOT NULL DEFAULT '',
                 image_url VARCHAR(512),
+                video_url VARCHAR(512),
                 sort_order INTEGER NOT NULL DEFAULT 100,
                 is_active BOOLEAN NOT NULL DEFAULT 1,
                 created_at DATETIME,
@@ -164,8 +165,20 @@ def sqlite_migrate_legacy_person_columns() -> None:
             cols = {r[1] for r in rows}
             if "image_url" not in cols:
                 conn.execute(text("ALTER TABLE knowledge_articles ADD COLUMN image_url VARCHAR(512)"))
+            if "video_url" not in cols:
+                conn.execute(text("ALTER TABLE knowledge_articles ADD COLUMN video_url VARCHAR(512)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_knowledge_articles_category ON knowledge_articles(category)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_knowledge_articles_is_active ON knowledge_articles(is_active)"))
+
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key VARCHAR(64) NOT NULL UNIQUE,
+                value TEXT NOT NULL DEFAULT '',
+                updated_at DATETIME
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_app_settings_key ON app_settings(key)"))
 
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS knowledge_category_options (

@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.database import Base, SessionLocal, engine, sqlite_migrate_legacy_person_columns
 from app.models import Organization, Person, TrainingAttendance, TrainingSession
@@ -11,6 +12,7 @@ from app.routers import admin, mp, mp_admin, wxoa
 from app.seed import seed
 
 os.makedirs(os.path.join(os.path.dirname(__file__), "..", "data"), exist_ok=True)
+os.makedirs(os.path.join(os.path.dirname(__file__), "..", "uploads"), exist_ok=True)
 
 startup_state = {"seed_ok": False, "seed_error": None}
 
@@ -50,6 +52,7 @@ app.include_router(admin.router)
 app.include_router(mp.router)
 app.include_router(mp_admin.router)
 app.include_router(wxoa.router)
+app.mount("/uploads", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "uploads")), name="uploads")
 
 
 @app.get("/")

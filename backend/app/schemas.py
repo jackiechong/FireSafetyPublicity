@@ -122,6 +122,7 @@ class KnowledgeArticleCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(default="", max_length=20000)
     image_url: Optional[str] = Field(default=None, max_length=512)
+    video_url: Optional[str] = Field(default=None, max_length=512)
     sort_order: int = Field(default=100, ge=0, le=9999)
     is_active: bool = True
 
@@ -131,6 +132,7 @@ class KnowledgeArticleUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     content: Optional[str] = Field(default=None, max_length=20000)
     image_url: Optional[str] = Field(default=None, max_length=512)
+    video_url: Optional[str] = Field(default=None, max_length=512)
     sort_order: Optional[int] = Field(default=None, ge=0, le=9999)
     is_active: Optional[bool] = None
 
@@ -141,12 +143,25 @@ class KnowledgeArticleOut(BaseModel):
     title: str
     content: str
     image_url: Optional[str] = None
+    video_url: Optional[str] = None
     sort_order: int = 100
     is_active: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class HomeConfigOut(BaseModel):
+    banner_image_url: Optional[str] = None
+
+
+class HomeConfigUpdate(BaseModel):
+    banner_image_url: Optional[str] = Field(default=None, max_length=512)
+
+
+class MediaUploadOut(BaseModel):
+    url: str
 
 
 class KnowledgeCategoryCreate(BaseModel):

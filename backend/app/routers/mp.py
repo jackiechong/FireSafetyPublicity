@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_person_token, resolve_mp_admin
-from app.models import Brigade, District, JobTitleOption, KnowledgeArticle, KnowledgeCategoryOption, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession, TrainingTopicOption
+from app.models import AppSetting, Brigade, District, JobTitleOption, KnowledgeArticle, KnowledgeCategoryOption, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession, TrainingTopicOption
 from app.schemas import (
     DistrictOut,
     MpActiveTrainingItem,
@@ -22,6 +22,7 @@ from app.schemas import (
     MpProfileIn,
     MpTrainingItem,
     DictionaryOptionOut,
+    HomeConfigOut,
     KnowledgeArticleOut,
 )
 from app.security import create_access_token
@@ -89,6 +90,11 @@ def _require_complete_profile(person: Person) -> None:
         raise HTTPException(409, "请先完成单位和姓名登记")
 
 
+def _setting_value(db: Session, key: str) -> str:
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    return row.value if row else ""
+
+
 @router.post("/login", response_model=MpLoginOut)
 async def mp_login(body: MpLoginIn, db: Session = Depends(get_db)):
     try:
@@ -115,6 +121,11 @@ def mp_me(
     db: Session = Depends(get_db),
 ):
     return _build_person_out(person, db)
+
+
+@router.get("/home-config", response_model=HomeConfigOut)
+def mp_home_config(db: Session = Depends(get_db)):
+    return HomeConfigOut(banner_image_url=_setting_value(db, "home_banner_image_url") or None)
 
 
 @router.get("/districts", response_model=List[DistrictOut])

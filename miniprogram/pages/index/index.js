@@ -27,13 +27,22 @@ function normalizeArticle(row = {}) {
     category: row.category || "",
     title: row.title || "栏目内容",
     content: row.content || "请在网页端知识专栏维护栏目内容。",
-    image_url: row.image_url || "",
+    image_url: resolveAssetUrl(row.image_url || ""),
   };
+}
+
+function resolveAssetUrl(url) {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  const app = getApp();
+  const apiBase = (app.globalData.apiBase || require("../../utils/config").apiBase || "").replace(/\/+$/, "");
+  return `${apiBase}${url}`;
 }
 
 Page({
   data: {
     loadingAction: "",
+    bannerImageUrl: "",
     modules: [],
     activityArticles: [],
   },
@@ -65,6 +74,12 @@ Page({
   },
 
   async loadHomeContent() {
+    try {
+      const homeConfig = await request({ url: "/api/mp/home-config" });
+      this.setData({ bannerImageUrl: resolveAssetUrl(homeConfig?.banner_image_url || "") });
+    } catch {
+      // 顶部图未配置时继续使用默认绘制背景。
+    }
     try {
       const categories = await request({ url: "/api/mp/knowledge-categories" });
       const source = categories && categories.length ? categories : FALLBACK_CATEGORIES;

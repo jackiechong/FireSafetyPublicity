@@ -10,6 +10,30 @@
 
     <section class="panel">
       <div class="panel-head">
+        <h3>首页顶部图片</h3>
+        <el-button type="primary" :loading="savingHome" @click="saveHomeConfig">保存设置</el-button>
+      </div>
+      <div class="banner-editor">
+        <el-image
+          v-if="homeConfig.banner_image_url"
+          :src="assetUrl(homeConfig.banner_image_url)"
+          fit="cover"
+          class="banner-preview"
+          :preview-src-list="[assetUrl(homeConfig.banner_image_url)]"
+          preview-teleported
+        />
+        <div v-else class="banner-empty">未设置首页顶部图片</div>
+        <div class="banner-actions">
+          <el-input v-model="homeConfig.banner_image_url" maxlength="512" placeholder="可填写 https://... 或上传图片后自动生成" />
+          <el-upload :show-file-list="false" accept="image/*" :http-request="uploadHomeBanner">
+            <el-button>上传图片</el-button>
+          </el-upload>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
         <h3>栏目管理</h3>
         <div class="category-add">
           <el-input v-model="newCategory.name" maxlength="64" placeholder="新增栏目名称" style="width: 180px" />
@@ -52,12 +76,18 @@
         <template #default="{ row }">
           <el-image
             v-if="row.image_url"
-            :src="row.image_url"
+            :src="assetUrl(row.image_url)"
             fit="cover"
             style="width: 52px; height: 36px; border-radius: 6px"
-            :preview-src-list="[row.image_url]"
+            :preview-src-list="[assetUrl(row.image_url)]"
             preview-teleported
           />
+          <span v-else class="muted">无</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="视频" width="90">
+        <template #default="{ row }">
+          <el-tag v-if="row.video_url" type="success">已上传</el-tag>
           <span v-else class="muted">无</span>
         </template>
       </el-table-column>
@@ -86,7 +116,20 @@
           <el-input v-model="form.title" maxlength="200" />
         </el-form-item>
         <el-form-item label="图片地址">
-          <el-input v-model="form.image_url" maxlength="512" placeholder="https://...，用于小程序首页内容卡片展示" />
+          <div class="media-field">
+            <el-input v-model="form.image_url" maxlength="512" placeholder="https://...，用于小程序栏目列表和活动卡片展示" />
+            <el-upload :show-file-list="false" accept="image/*" :http-request="uploadArticleImage">
+              <el-button>上传图片</el-button>
+            </el-upload>
+          </div>
+        </el-form-item>
+        <el-form-item label="视频地址">
+          <div class="media-field">
+            <el-input v-model="form.video_url" maxlength="512" placeholder="宣传视频栏目可上传 mp4/mov/webm，供小程序端播放" />
+            <el-upload :show-file-list="false" accept="video/*" :http-request="uploadArticleVideo">
+              <el-button>上传视频</el-button>
+            </el-upload>
+          </div>
         </el-form-item>
         <el-form-item label="内容">
           <el-input v-model="form.content" type="textarea" :rows="8" maxlength="20000" show-word-limit />
@@ -118,11 +161,14 @@ const visible = ref(false);
 const editing = ref(null);
 const rows = ref([]);
 const categories = ref([]);
+const savingHome = ref(false);
+const homeConfig = reactive({ banner_image_url: "" });
 const form = reactive({
   category: "knowledge",
   title: "",
   content: "",
   image_url: "",
+  video_url: "",
   sort_order: 100,
   is_active: true,
 });
@@ -132,17 +178,41 @@ function categoryName(value) {
   return categories.value.find((c) => c.code === value)?.name || value;
 }
 
+function apiBase() {
+  let raw = (import.meta.env.VITE_API_BASE || "").trim().replace(/\/+$/, "");
+  if (raw.endsWith("/api")) raw = raw.slice(0, -4);
+  return raw;
+}
+
+function assetUrl(value) {
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${apiBase()}${value}`;
+}
+
+async function uploadMedia(file) {
+  const data = new FormData();
+  data.append("file", file);
+  const res = await http.post("/api/admin/media/upload", data, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120000,
+  });
+  return res.data?.url || "";
+}
+
 async function load() {
   loading.value = true;
   try {
-    const [catRes, articleRes] = await Promise.all([
+    const [catRes, articleRes, homeRes] = await Promise.all([
       http.get("/api/admin/knowledge-categories", { params: { include_inactive: true } }),
       http.get("/api/admin/knowledge-articles", { params: { include_inactive: true } }),
+      http.get("/api/admin/home-config"),
     ]);
     categories.value = catRes.data || [];
     const active = categories.value.find((c) => c.is_active) || categories.value[0];
     if (active && !categories.value.some((c) => c.code === form.category)) form.category = active.code;
     rows.value = articleRes.data || [];
+    homeConfig.banner_image_url = homeRes.data?.banner_image_url || "";
   } finally {
     loading.value = false;
   }
@@ -155,6 +225,7 @@ function open(row) {
     title: row?.title || "",
     content: row?.content || "",
     image_url: row?.image_url || "",
+    video_url: row?.video_url || "",
     sort_order: row?.sort_order ?? 100,
     is_active: row?.is_active ?? true,
   });
@@ -168,7 +239,12 @@ async function submit() {
   }
   saving.value = true;
   try {
-    const data = { ...form, title: form.title.trim(), image_url: form.image_url.trim() || null };
+    const data = {
+      ...form,
+      title: form.title.trim(),
+      image_url: form.image_url.trim() || null,
+      video_url: form.video_url.trim() || null,
+    };
     if (editing.value) await http.patch(`/api/admin/knowledge-articles/${editing.value.id}`, data);
     else await http.post("/api/admin/knowledge-articles", data);
     ElMessage.success("已保存");
@@ -178,6 +254,48 @@ async function submit() {
     ElMessage.error(e?.response?.data?.detail || "保存失败");
   } finally {
     saving.value = false;
+  }
+}
+
+async function uploadHomeBanner({ file }) {
+  try {
+    homeConfig.banner_image_url = await uploadMedia(file);
+    ElMessage.success("图片已上传，请保存设置");
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || "上传失败");
+  }
+}
+
+async function uploadArticleImage({ file }) {
+  try {
+    form.image_url = await uploadMedia(file);
+    ElMessage.success("图片已上传");
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || "上传失败");
+  }
+}
+
+async function uploadArticleVideo({ file }) {
+  try {
+    form.video_url = await uploadMedia(file);
+    ElMessage.success("视频已上传");
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || "上传失败");
+  }
+}
+
+async function saveHomeConfig() {
+  savingHome.value = true;
+  try {
+    const res = await http.patch("/api/admin/home-config", {
+      banner_image_url: homeConfig.banner_image_url.trim() || null,
+    });
+    homeConfig.banner_image_url = res.data?.banner_image_url || "";
+    ElMessage.success("首页顶部图片已保存");
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || "保存失败");
+  } finally {
+    savingHome.value = false;
   }
 }
 
@@ -282,6 +400,37 @@ p {
   align-items: center;
   display: flex;
   gap: 8px;
+}
+.banner-editor {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+.banner-preview,
+.banner-empty {
+  width: 320px;
+  height: 150px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #eef3fb;
+}
+.banner-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8a94a6;
+  border: 1px dashed #c7d2e4;
+}
+.banner-actions,
+.media-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+.media-field .el-input {
+  flex: 1;
 }
 h3 {
   font-size: 1rem;

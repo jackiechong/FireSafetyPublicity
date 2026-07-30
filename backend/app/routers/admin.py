@@ -2,6 +2,7 @@ import secrets
 import io
 import zipfile
 from datetime import datetime, timedelta
+from pathlib import Path
 from xml.etree import ElementTree as ET
 from typing import Annotated, List, Optional
 
@@ -16,6 +17,7 @@ from app.models import (
     AdminUser,
     AdminWxBindCode,
     AdminWxBinding,
+    AppSetting,
     Brigade,
     District,
     JobTitleOption,
@@ -45,6 +47,8 @@ from app.schemas import (
     BrigadeOut,
     DistrictOut,
     DictionaryOptionOut,
+    HomeConfigOut,
+    HomeConfigUpdate,
     JobTitleOptionCreate,
     JobTitleOptionUpdate,
     KnowledgeArticleCreate,
@@ -52,6 +56,7 @@ from app.schemas import (
     KnowledgeArticleUpdate,
     KnowledgeCategoryCreate,
     KnowledgeCategoryUpdate,
+    MediaUploadOut,
     OrganizationCreate,
     OrganizationOut,
     OrganizationUpdate,
@@ -99,6 +104,18 @@ ORG_TYPE_LABELS = {
 }
 
 DETACHMENT_BRIGADE_CODE = "HLDZD"
+UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads"
+UPLOAD_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".mp4",
+    ".mov",
+    ".m4v",
+    ".webm",
+}
 
 
 def _org_type_value(value) -> str:
@@ -121,6 +138,21 @@ def _slug_code(name: str) -> str:
     raw = "".join(ch.lower() if ch.isalnum() else "_" for ch in name.strip())
     raw = "_".join(part for part in raw.split("_") if part)
     return raw[:48] or f"custom_{secrets.randbelow(1_000_000):06d}"
+
+
+def _setting_value(db: Session, key: str) -> str:
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    return row.value if row else ""
+
+
+def _set_setting(db: Session, key: str, value: str) -> None:
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    if not row:
+        row = AppSetting(key=key, value=value)
+        db.add(row)
+    else:
+        row.value = value
+        row.updated_at = datetime.utcnow()
 
 
 def _is_detachment_brigade(db: Session, brigade_id: Optional[int]) -> bool:
@@ -667,6 +699,53 @@ def delete_knowledge_article(
         raise HTTPException(404, "内容不存在")
     db.delete(row)
     db.commit()
+
+
+@router.post("/media/upload", response_model=MediaUploadOut)
+async def upload_media(
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    file: UploadFile = File(...),
+):
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in UPLOAD_EXTENSIONS:
+        raise HTTPException(400, "仅支持 jpg、png、webp、gif、mp4、mov、m4v、webm 文件")
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    folder = datetime.utcnow().strftime("%Y%m")
+    target_dir = UPLOAD_ROOT / folder
+    target_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{ext}"
+    target = target_dir / filename
+    size = 0
+    with target.open("wb") as out:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > 200 * 1024 * 1024:
+                target.unlink(missing_ok=True)
+                raise HTTPException(400, "文件不能超过 200MB")
+            out.write(chunk)
+    return MediaUploadOut(url=f"/uploads/{folder}/{filename}")
+
+
+@router.get("/home-config", response_model=HomeConfigOut)
+def get_home_config(
+    _: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+):
+    return HomeConfigOut(banner_image_url=_setting_value(db, "home_banner_image_url") or None)
+
+
+@router.patch("/home-config", response_model=HomeConfigOut)
+def update_home_config(
+    body: HomeConfigUpdate,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    _set_setting(db, "home_banner_image_url", (body.banner_image_url or "").strip())
+    db.commit()
+    return HomeConfigOut(banner_image_url=_setting_value(db, "home_banner_image_url") or None)
 
 
 def _org_query(admin: AdminUser, db: Session):

@@ -1,9 +1,11 @@
 <view class="home">
   <view class="hero">
+    <image wx:if="{{bannerImageUrl}}" class="hero-bg" src="{{bannerImageUrl}}" mode="aspectFill" />
+    <view wx:if="{{bannerImageUrl}}" class="hero-mask"></view>
     <view class="hero-title">葫消培</view>
     <view class="hero-main">关注消防 生命至上</view>
     <view class="hero-sub">全民消防 生命至上</view>
-    <view class="hero-scene">
+    <view wx:if="{{!bannerImageUrl}}" class="hero-scene">
       <view class="sea"></view>
       <view class="city"></view>
       <view class="mascot">
