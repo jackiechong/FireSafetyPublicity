@@ -58,9 +58,10 @@
       <el-table-column prop="created_at" label="注册时间" width="150">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="110" fixed="right">
+      <el-table-column label="操作" width="170" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" :disabled="!canEdit" @click="openEdit(row)">编辑</el-button>
+          <el-button link type="danger" :disabled="currentAdmin?.role !== 'detachment'" @click="unbindPerson(row)">解除绑定</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -123,7 +124,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import http from "../api/http";
 
 const rows = ref([]);
@@ -262,6 +263,21 @@ async function openPersonTrainings(row) {
     trainingRows.value = data || [];
   } finally {
     trainingLoading.value = false;
+  }
+}
+
+async function unbindPerson(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定解除「${row.name || row.phone || "该人员"}」的微信身份绑定吗？解除后该微信下次进入小程序需要重新填写身份信息。`,
+      "解除身份绑定",
+      { type: "warning" }
+    );
+    await http.patch(`/api/admin/persons/${row.person_id}/unbind`);
+    ElMessage.success("已解除身份绑定");
+    await load();
+  } catch (e) {
+    if (e !== "cancel") ElMessage.error(errorMessage(e, "解除失败"));
   }
 }
 

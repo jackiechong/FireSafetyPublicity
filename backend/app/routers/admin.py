@@ -2273,6 +2273,37 @@ def rebind_person_profile(
     return _person_out(person, db)
 
 
+@router.patch("/persons/{person_id}/unbind", status_code=204)
+def unbind_person_profile(
+    person_id: int,
+    _: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    """支队管理员解除微信人员身份绑定；保留 openid，使用户下次登录重新完善资料。"""
+    person = db.get(Person, person_id)
+    if not person:
+        raise HTTPException(404, "人员不存在")
+    if person.openid:
+        db.query(AdminWxBinding).filter(
+            or_(AdminWxBinding.wx_openid == person.openid, AdminWxBinding.person_id == person.id)
+        ).update(
+            {"is_active": False, "person_id": None},
+            synchronize_session=False,
+        )
+        db.query(AdminUser).filter(AdminUser.wx_openid == person.openid).update(
+            {"wx_openid": None, "wx_bound_at": None},
+            synchronize_session=False,
+        )
+    person.name = None
+    person.phone = None
+    person.district_id = None
+    person.organization_id = None
+    person.job_title = None
+    person.person_category = None
+    person.updated_at = datetime.utcnow()
+    db.commit()
+
+
 @router.get("/accounts/{user_id}/wx-bindings", response_model=List[AdminWxBindingOut])
 def list_admin_wx_bindings(
     user_id: int,
