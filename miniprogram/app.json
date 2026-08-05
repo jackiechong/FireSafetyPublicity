@@ -2,6 +2,7 @@
   "pages": [
     "pages/index/index",
     "pages/category/category",
+    "pages/article/article",
     "pages/checkin/checkin",
     "pages/bind/bind",
     "pages/me/me",

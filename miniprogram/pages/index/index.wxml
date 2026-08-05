@@ -42,7 +42,7 @@
     <view wx:for="{{activityArticles}}" wx:key="id" class="activity-card {{index === 0 ? 'warm' : 'cool'}}" bindtap="openActivities">
       <image wx:if="{{item.image_url}}" class="activity-bg" src="{{item.image_url}}" mode="aspectFill" />
       <view class="activity-title">{{item.title}}</view>
-      <view class="activity-sub">{{item.content}}</view>
+      <view class="activity-sub">{{item.summary}}</view>
       <view class="activity-link">查看详情</view>
     </view>
   </view>

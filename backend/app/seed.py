@@ -1,4 +1,4 @@
-"""初始化葫芦岛支队示例数据：区县、大队、默认管理员、测试用假数据"""
+"""初始化葫芦岛支队正式基础数据：区县、大队、默认管理员和字典项。"""
 
 import random
 from datetime import datetime, timedelta
@@ -56,6 +56,7 @@ BRIGADES = [
 DEMO_MARK = "DEMO_SEED"
 # 建昌县批量模拟：30 单位 × 每单位 20–30 人，每人约 60 分钟学时（幂等，仅缺省时写入）
 FAKE_JIANCHANG_BULK = "FAKE_JIANCHANG_BULK"
+DEMO_REMARKS = (DEMO_MARK, FAKE_JIANCHANG_BULK)
 
 # 各区县默认挂靠大队（用于补演示单位 / 补零数据）
 DISTRICT_DEFAULT_BRIGADE: dict[str, str] = {
@@ -173,7 +174,8 @@ def seed():
         _retire_removed_brigades(db)
         _ensure_fire_brigade_organizations(db)
         _ensure_other_organizations(db)
-        _reclassify_demo_org_types(db)
+        _remove_demo_data(db)
+        _remove_placeholder_articles(db)
 
         if db.query(AdminUser).count() == 0:
             det = AdminUser(
@@ -197,14 +199,80 @@ def seed():
 
         _ensure_root_admin(db)
 
-        _seed_demo_dataset(db)
-        _ensure_demo_persons(db)
-        _ensure_demo_trainings(db, total=200)
-        _ensure_demo_attendances(db)
-        _seed_jianchang_fake_bulk(db)
-        _ensure_fake_padding_for_zero_districts(db)
     finally:
         db.close()
+
+
+def _remove_demo_data(db: Session) -> None:
+    """正式上线时清理历史演示/模拟数据，避免统计和列表掺入假数据。"""
+    demo_org_ids = [
+        row[0]
+        for row in db.query(Organization.id)
+        .filter(Organization.remark.in_(DEMO_REMARKS))
+        .all()
+    ]
+    demo_session_ids = [
+        row[0]
+        for row in db.query(TrainingSession.id)
+        .filter(TrainingSession.remark.in_(DEMO_REMARKS))
+        .all()
+    ]
+    demo_person_ids = [
+        row[0]
+        for row in db.query(Person.id)
+        .filter(
+            Person.openid.like("fake_openid_test_%")
+            | Person.openid.like("fake_pad_d%")
+            | Person.openid.like("fake_jc_o%")
+        )
+        .all()
+    ]
+    if demo_org_ids:
+        demo_person_ids.extend(
+            row[0]
+            for row in db.query(Person.id)
+            .filter(Person.organization_id.in_(demo_org_ids))
+            .all()
+        )
+        demo_session_ids.extend(
+            row[0]
+            for row in db.query(TrainingSession.id)
+            .filter(TrainingSession.organization_id.in_(demo_org_ids))
+            .all()
+        )
+    demo_person_ids = list({pid for pid in demo_person_ids if pid})
+    demo_session_ids = list({sid for sid in demo_session_ids if sid})
+
+    changed = False
+    if demo_session_ids:
+        db.query(TrainingAttendance).filter(TrainingAttendance.session_id.in_(demo_session_ids)).delete(synchronize_session=False)
+        db.query(TrainingSession).filter(TrainingSession.id.in_(demo_session_ids)).delete(synchronize_session=False)
+        changed = True
+    if demo_person_ids:
+        db.query(TrainingAttendance).filter(TrainingAttendance.person_id.in_(demo_person_ids)).delete(synchronize_session=False)
+        db.query(Person).filter(Person.id.in_(demo_person_ids)).delete(synchronize_session=False)
+        changed = True
+    if demo_org_ids:
+        db.query(Organization).filter(Organization.id.in_(demo_org_ids)).delete(synchronize_session=False)
+        changed = True
+    if changed:
+        db.commit()
+
+
+def _remove_placeholder_articles(db: Session) -> None:
+    """清理初始化时生成、但未维护过的栏目占位内容。"""
+    labels = [label for _, label in DEFAULT_KNOWLEDGE_CATEGORIES]
+    titles = [f"{label}栏目" for label in labels]
+    deleted = (
+        db.query(KnowledgeArticle)
+        .filter(
+            KnowledgeArticle.title.in_(titles),
+            KnowledgeArticle.content == "请在后台编辑本栏目内容。",
+        )
+        .delete(synchronize_session=False)
+    )
+    if deleted:
+        db.commit()
 
 
 def _ensure_other_organizations(db: Session) -> None:
@@ -289,12 +357,6 @@ def _ensure_dictionary_options(db: Session) -> None:
             changed = True
         elif cat.name != label and not db.query(KnowledgeCategoryOption).filter(KnowledgeCategoryOption.name == label, KnowledgeCategoryOption.code != code).first():
             cat.name = label
-            changed = True
-        title = f"{label}栏目"
-        if not db.query(KnowledgeArticle).filter(
-            KnowledgeArticle.category == code, KnowledgeArticle.title == title
-        ).first():
-            db.add(KnowledgeArticle(category=code, title=title, content="请在后台编辑本栏目内容。", sort_order=idx, is_active=True))
             changed = True
     legacy_law = db.query(KnowledgeCategoryOption).filter(KnowledgeCategoryOption.code == "law").first()
     if legacy_law:

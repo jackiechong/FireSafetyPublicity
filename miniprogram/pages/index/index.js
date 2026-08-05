@@ -23,11 +23,13 @@ const COLOR_MAP = {
 const ACTIVITY_CATEGORY = { code: "activity", name: "热门活动" };
 
 function normalizeArticle(row = {}) {
+  const content = row.content || "请在网页端知识专栏维护栏目内容。";
   return {
     id: row.id || 0,
     category: row.category || "",
     title: row.title || "栏目内容",
-    content: row.content || "请在网页端知识专栏维护栏目内容。",
+    content,
+    summary: content.replace(/\s+/g, " ").slice(0, 34),
     image_url: resolveAssetUrl(row.image_url || ""),
   };
 }

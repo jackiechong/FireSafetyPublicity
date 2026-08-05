@@ -1,10 +1,13 @@
 const { request } = require("../../utils/request");
 
 function normalizeArticle(row = {}) {
+  const content = row.content || "请在网页端知识专栏维护栏目内容。";
   return {
     id: row.id || 0,
+    category: row.category || "",
     title: row.title || "栏目内容",
-    content: row.content || "请在网页端知识专栏维护栏目内容。",
+    content,
+    summary: content.replace(/\s+/g, " ").slice(0, 46),
     image_url: resolveAssetUrl(row.image_url || ""),
     video_url: resolveAssetUrl(row.video_url || ""),
     created_at: row.created_at || "",
@@ -51,5 +54,16 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  openArticle(e) {
+    const index = Number(e.currentTarget.dataset.index) || 0;
+    const article = this.data.articles[index];
+    if (!article) return;
+    const app = getApp();
+    app.globalData.currentArticle = article;
+    const id = encodeURIComponent(article.id || "");
+    const category = encodeURIComponent(this.data.code || article.category || "");
+    wx.navigateTo({ url: `/pages/article/article?id=${id}&category=${category}` });
   },
 });

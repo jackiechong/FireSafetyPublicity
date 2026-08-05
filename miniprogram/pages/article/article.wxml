@@ -1,0 +1,20 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state">正在加载...</view>
+
+  <view wx:else class="article">
+    <image wx:if="{{article.image_url}}" class="cover" src="{{article.image_url}}" mode="widthFix" />
+    <video
+      wx:if="{{article.video_url}}"
+      class="video"
+      src="{{article.video_url}}"
+      poster="{{article.image_url}}"
+      controls
+      object-fit="contain"
+    ></video>
+    <view class="body">
+      <view class="title">{{article.title}}</view>
+      <view wx:if="{{article.content}}" class="content">{{article.content}}</view>
+      <view wx:else class="empty">暂无文字内容</view>
+    </view>
+  </view>
+</view>
