@@ -28,10 +28,22 @@
     </view>
   </view>
 
-  <view class="notice-card">
-    <text class="notice-label">通知公告</text>
-    <text class="notice-text">培训活动、学习内容与签到记录服务已开放</text>
-    <text class="notice-date">07-30</text>
+  <view class="notice-card" bindtap="openNotice">
+    <view class="notice-label">通知公告</view>
+    <view class="notice-main">
+      <view class="notice-title">{{noticeArticle.title}}</view>
+      <view class="notice-text">{{noticeArticle.summary || noticeArticle.content}}</view>
+    </view>
+    <view class="notice-side">
+      <view class="notice-date">{{noticeArticle.date_text || '最新'}}</view>
+      <view class="notice-arrow">›</view>
+    </view>
+  </view>
+
+  <view class="official-account-entry" bindtap="openOfficialAccount">
+    <view class="official-account-title">关注消防公众号</view>
+    <view class="official-account-text">获取更多消防宣传资讯</view>
+    <view class="official-account-arrow">›</view>
   </view>
 
   <view id="activities" class="section-head">

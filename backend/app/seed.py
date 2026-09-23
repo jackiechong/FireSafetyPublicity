@@ -88,6 +88,7 @@ DEFAULT_JOB_TITLES = ["消防安全责任人", "消防安全管理人", "安全�
 DEFAULT_TRAINING_TOPICS = ["消防负责人培训", "消控室人员培训", "员工消防培训", "灭火器材使用培训", "法律法规培训"]
 
 DEFAULT_KNOWLEDGE_CATEGORIES: list[tuple[str, str]] = [
+    ("notice", "通知公告"),
     ("knowledge", "消防知识"),
     ("video", "宣传视频"),
     ("system", "制度"),

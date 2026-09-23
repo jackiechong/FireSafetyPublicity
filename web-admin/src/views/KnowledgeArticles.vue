@@ -5,7 +5,10 @@
         <h2>知识专栏</h2>
         <p>维护小程序首页展示的栏目名称和栏目内容。</p>
       </div>
-      <el-button type="primary" @click="open()">新增内容</el-button>
+      <div class="head-actions">
+        <el-button @click="openNotice">发布通知公告</el-button>
+        <el-button type="primary" @click="open()">新增内容</el-button>
+      </div>
     </div>
 
     <section class="panel">
@@ -110,6 +113,7 @@
         <el-form-item label="栏目" required>
           <el-select v-model="form.category" style="width: 100%">
             <el-option v-for="c in categories" :key="c.code" :label="c.name" :value="c.code" />
+            <el-option v-if="!categories.some((c) => c.code === 'notice')" label="通知公告" value="notice" />
           </el-select>
         </el-form-item>
         <el-form-item label="标题" required>
@@ -175,7 +179,7 @@ const form = reactive({
 const newCategory = reactive({ name: "", sort_order: 100 });
 
 function categoryName(value) {
-  return categories.value.find((c) => c.code === value)?.name || value;
+  return categories.value.find((c) => c.code === value)?.name || (value === "notice" ? "通知公告" : value);
 }
 
 function apiBase() {
@@ -218,10 +222,10 @@ async function load() {
   }
 }
 
-function open(row) {
+function open(row, defaultCategory = "knowledge") {
   editing.value = row || null;
   Object.assign(form, {
-    category: row?.category || "knowledge",
+    category: row?.category || defaultCategory,
     title: row?.title || "",
     content: row?.content || "",
     image_url: row?.image_url || "",
@@ -230,6 +234,10 @@ function open(row) {
     is_active: row?.is_active ?? true,
   });
   visible.value = true;
+}
+
+function openNotice() {
+  open(null, "notice");
 }
 
 async function submit() {
@@ -378,6 +386,10 @@ onMounted(load);
   align-items: center;
   display: flex;
   justify-content: space-between;
+}
+.head-actions {
+  display: flex;
+  gap: 10px;
 }
 h2 {
   margin: 0 0 6px;

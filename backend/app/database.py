@@ -54,6 +54,20 @@ def sqlite_migrate_legacy_person_columns() -> None:
                 )
                 WHERE organization_id IS NULL
             """))
+            # 旧库在模型加入唯一约束前可能已有重复签到。保留最早的一条，
+            # 再由唯一索引确保同一人员在同一场次只能有一条记录。
+            conn.execute(text("""
+                DELETE FROM training_attendances
+                WHERE id NOT IN (
+                    SELECT MIN(id)
+                    FROM training_attendances
+                    GROUP BY session_id, person_id
+                )
+            """))
+            conn.execute(text("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_training_attendances_session_person
+                ON training_attendances(session_id, person_id)
+            """))
             conn.execute(text("""
                 UPDATE training_attendances
                 SET organization_id = (

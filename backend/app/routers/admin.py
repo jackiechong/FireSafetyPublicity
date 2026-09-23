@@ -774,7 +774,7 @@ def list_organizations(
     if q:
         like = f"%{q}%"
         query = query.filter(Organization.name.like(like))
-    return query.order_by(Organization.id.desc()).limit(500).all()
+    return query.order_by(Organization.id.desc()).all()
 
 
 @router.get("/organizations/suggest", response_model=List[SuggestItem])
@@ -879,23 +879,26 @@ def list_trainings(
     return query.order_by(TrainingSession.start_at.desc()).limit(500).all()
 
 
-def _default_training_organization(db: Session, brigade_id: int) -> Optional[Organization]:
-    brigade = db.get(Brigade, brigade_id)
-    if not brigade:
-        return None
-    if brigade.code == DETACHMENT_BRIGADE_CODE:
+def _default_training_organization(db: Session, brigade_id: Optional[int]) -> Optional[Organization]:
+    brigade = db.get(Brigade, brigade_id) if brigade_id else None
+    if brigade and brigade.code == DETACHMENT_BRIGADE_CODE:
         org = db.query(Organization).filter(Organization.name == "葫芦岛市消防救援支队").first()
         if org:
             return org
-    org = (
-        db.query(Organization)
-        .filter(Organization.brigade_id == brigade_id, Organization.remark == "SYSTEM_FIRE_BRIGADE")
-        .order_by(Organization.id)
-        .first()
-    )
-    if org:
-        return org
-    return db.query(Organization).filter(Organization.brigade_id == brigade_id).order_by(Organization.id).first()
+    if brigade_id:
+        org = (
+            db.query(Organization)
+            .filter(Organization.brigade_id == brigade_id, Organization.remark == "SYSTEM_FIRE_BRIGADE")
+            .order_by(Organization.id)
+            .first()
+        )
+        if org:
+            return org
+        org = db.query(Organization).filter(Organization.brigade_id == brigade_id).order_by(Organization.id).first()
+        if org:
+            return org
+    org = db.query(Organization).filter(Organization.name == "葫芦岛市消防救援支队").first()
+    return org or db.query(Organization).order_by(Organization.id).first()
 
 
 @router.post("/trainings", response_model=TrainingSessionOut)
@@ -948,6 +951,15 @@ def patch_training(
         TrainingTopicOption.is_active.is_(True),
     ).first():
         raise HTTPException(400, "培训主题不存在或已停用")
+    if "organization_id" in data:
+        org = db.get(Organization, data["organization_id"])
+        if not org:
+            raise HTTPException(400, "所选单位不存在")
+        if admin.role == AdminRole.brigade and org.brigade_id != admin.brigade_id:
+            raise HTTPException(403, "只能修改为本大队所属单位")
+        # 培训主办单位变更后，培训归属大队也需随单位同步，避免权限与统计口径不一致。
+        sess.organization_id = org.id
+        sess.brigade_id = org.brigade_id
     if "is_active" in data:
         sess.is_active = bool(data["is_active"])
         if not sess.is_active:
@@ -1046,10 +1058,10 @@ def create_training_quick(
     admin: Annotated[AdminUser, Depends(get_current_admin)],
     db: Session = Depends(get_db),
 ):
-    """手机看板一键创建培训：标题 + 单位 + 时长，自动按单位推断大队并生成签到二维码内容。"""
-    org = db.get(Organization, body.organization_id)
+    """手机端快捷创建培训。参训单位可不指定，实际签到单位以人员绑定单位为准。"""
+    org = db.get(Organization, body.organization_id) if body.organization_id else _default_training_organization(db, admin.brigade_id)
     if not org:
-        raise HTTPException(404, "单位不存在")
+        raise HTTPException(400, "未找到可用的培训归属单位")
     if admin.role == AdminRole.brigade and org.brigade_id != admin.brigade_id:
         raise HTTPException(403, "无权在该单位创建培训")
     if body.topic_id and not db.query(TrainingTopicOption).filter(
@@ -1544,9 +1556,13 @@ def _summary_item(row) -> StatsTrainingSummaryItem:
         start_at=sess.start_at,
         person_count=int(row.person_count or 0),
         brigade_name=row.brigade_name or "",
+        organization_id=sess.organization_id,
         organization_name=row.org_name or "",
+        topic_id=sess.topic_id,
         topic_name=row.topic_name,
         duration_minutes=int(sess.duration_minutes or 0),
+        location=sess.location,
+        remark=sess.remark,
         is_active=bool(sess.is_active),
     )
 
@@ -2050,6 +2066,28 @@ def create_admin_account(
     )
 
 
+@router.delete("/accounts/{user_id}", status_code=204)
+def delete_admin_account(
+    user_id: int,
+    admin: Annotated[AdminUser, Depends(require_detachment_admin)],
+    db: Session = Depends(get_db),
+):
+    u = db.get(AdminUser, user_id)
+    if not u:
+        raise HTTPException(404, "用户不存在")
+    if u.id == admin.id:
+        raise HTTPException(400, "不能删除当前登录账号")
+    if u.username == "admin":
+        raise HTTPException(400, "总管理员账号不可删除")
+    if u.role == AdminRole.detachment and u.is_active and _detachment_active_count(db) <= 1:
+        raise HTTPException(400, "至少需要保留一名在职的支队管理员账号")
+
+    db.query(AdminWxBindCode).filter(AdminWxBindCode.admin_user_id == u.id).delete(synchronize_session=False)
+    db.query(AdminWxBinding).filter(AdminWxBinding.admin_user_id == u.id).delete(synchronize_session=False)
+    db.delete(u)
+    db.commit()
+
+
 @router.post("/accounts/{user_id}/wx-bind-code", response_model=AdminWxBindCodeOut)
 def create_admin_wx_bind_code(
     user_id: int,
@@ -2116,6 +2154,7 @@ def list_persons(
     q: Optional[str] = Query(None, description="姓名、手机号、单位关键词"),
     district_id: Optional[int] = Query(None),
     organization_id: Optional[int] = Query(None),
+    person_category: Optional[str] = Query(None, description="人员类别"),
 ):
     query = db.query(Person).outerjoin(Organization, Person.organization_id == Organization.id)
     query = query.filter(Person.name.isnot(None), Person.phone.isnot(None), Person.organization_id.isnot(None))
@@ -2126,6 +2165,8 @@ def list_persons(
         query = query.filter(Person.district_id == district_id)
     if organization_id is not None:
         query = query.filter(Person.organization_id == organization_id)
+    if person_category and person_category.strip():
+        query = query.filter(Person.person_category == person_category.strip())
     if q and q.strip():
         like = f"%{q.strip()}%"
         query = query.filter(or_(Person.name.like(like), Person.phone.like(like), Organization.name.like(like)))
@@ -2301,6 +2342,35 @@ def unbind_person_profile(
     person.job_title = None
     person.person_category = None
     person.updated_at = datetime.utcnow()
+    db.commit()
+
+
+@router.delete("/persons/{person_id}", status_code=204)
+def delete_person(
+    person_id: int,
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+):
+    person = db.get(Person, person_id)
+    if not person:
+        raise HTTPException(404, "人员不存在")
+    org = db.get(Organization, person.organization_id) if person.organization_id else None
+    if admin.role == AdminRole.brigade:
+        if not org or org.brigade_id != admin.brigade_id:
+            raise HTTPException(403, "只能删除本大队人员")
+    if person.openid:
+        db.query(AdminWxBinding).filter(
+            or_(AdminWxBinding.wx_openid == person.openid, AdminWxBinding.person_id == person.id)
+        ).update(
+            {"is_active": False, "person_id": None},
+            synchronize_session=False,
+        )
+        db.query(AdminUser).filter(AdminUser.wx_openid == person.openid).update(
+            {"wx_openid": None, "wx_bound_at": None},
+            synchronize_session=False,
+        )
+    db.query(TrainingAttendance).filter(TrainingAttendance.person_id == person.id).delete(synchronize_session=False)
+    db.delete(person)
     db.commit()
 
 

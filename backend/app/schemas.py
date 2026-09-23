@@ -243,6 +243,7 @@ class TrainingSessionPatch(BaseModel):
     is_active: Optional[bool] = None
     title: Optional[str] = Field(default=None, min_length=1, max_length=256)
     topic_id: Optional[int] = None
+    organization_id: Optional[int] = Field(default=None, ge=1)
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None
     duration_minutes: Optional[int] = Field(default=None, ge=0)
@@ -280,7 +281,7 @@ class AttendanceAdd(BaseModel):
 class QuickTrainingCreate(BaseModel):
     """手机端「一键创建培训」请求体。"""
     title: str = Field(..., min_length=1, max_length=200)
-    organization_id: int = Field(..., ge=1)
+    organization_id: Optional[int] = Field(default=None, ge=1)
     duration_minutes: int = Field(default=60, ge=1, le=1440)
     location: Optional[str] = Field(default=None, max_length=200)
     start_at: Optional[datetime] = None
@@ -511,9 +512,13 @@ class StatsTrainingSummaryItem(BaseModel):
     start_at: datetime
     person_count: int
     brigade_name: str
+    organization_id: int
     organization_name: str
+    topic_id: Optional[int] = None
     topic_name: Optional[str] = None
     duration_minutes: int = 0
+    location: Optional[str] = None
+    remark: Optional[str] = None
     is_active: bool = True
 
 

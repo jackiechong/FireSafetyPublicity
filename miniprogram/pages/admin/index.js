@@ -32,9 +32,9 @@ Page({
     districtNames: [],
     districtIndex: 0,
     districtId: null,
-    orgList: [],
-    orgLabels: [],
-    orgIndex: 0,
+    organizationKeyword: "",
+    organizationSuggestions: [],
+    selectedOrganization: null,
     topicList: [],
     topicNames: [],
     topicIndex: 0,
@@ -105,31 +105,25 @@ Page({
 
   async loadDistricts() {
     const list = await request({ url: "/api/mp/admin/districts" });
-    const names = (list || []).map((d) => d.name);
+    const districtList = [{ id: null, name: "全部区县" }, ...(list || [])];
     this.setData({
-      districtList: list || [],
-      districtNames: names,
+      districtList,
+      districtNames: districtList.map((d) => d.name),
       districtIndex: 0,
-      districtId: list && list.length ? list[0].id : null,
+      districtId: null,
     });
-    if (this.data.districtId) await this.loadOrgs();
   },
 
-  async loadOrgs() {
+  async searchOrganizations(keyword) {
+    const text = String(keyword || "").trim();
+    if (!text) return;
     const { districtId } = this.data;
-    if (!districtId) return;
+    const districtParam = districtId ? `&district_id=${districtId}` : "";
     const list = await request({
-      url: `/api/mp/admin/organizations?district_id=${districtId}&q=`,
+      url: `/api/mp/admin/organizations?q=${encodeURIComponent(text)}${districtParam}`,
     });
-    const labels = (list || []).map((o) => {
-      const typeName = this.data.orgTypeLabels[o.org_type] || o.org_type || "其他部门";
-      return `${o.name}（${typeName}）`;
-    });
-    this.setData({
-      orgList: list || [],
-      orgLabels: labels,
-      orgIndex: 0,
-    });
+    if (String(this.data.organizationKeyword || "").trim() !== text) return;
+    this.setData({ organizationSuggestions: list || [] });
   },
 
   async loadTrainings() {
@@ -144,12 +138,36 @@ Page({
   onDistrictChange(e) {
     const idx = Number(e.detail.value);
     const d = this.data.districtList[idx];
-    this.setData({ districtIndex: idx, districtId: d ? d.id : null });
-    this.loadOrgs();
+    this.setData({
+      districtIndex: idx,
+      districtId: d ? d.id : null,
+      organizationKeyword: "",
+      organizationSuggestions: [],
+      selectedOrganization: null,
+    });
   },
 
-  onOrgChange(e) {
-    this.setData({ orgIndex: Number(e.detail.value) });
+  onOrganizationKeyword(e) {
+    const organizationKeyword = e.detail.value;
+    this.setData({ organizationKeyword, organizationSuggestions: [], selectedOrganization: null });
+    clearTimeout(this.organizationSearchTimer);
+    if (!String(organizationKeyword || "").trim()) return;
+    this.organizationSearchTimer = setTimeout(() => this.searchOrganizations(organizationKeyword), 250);
+  },
+
+  onSelectOrganization(e) {
+    const id = Number(e.currentTarget.dataset.id);
+    const selectedOrganization = this.data.organizationSuggestions.find((item) => Number(item.id) === id);
+    if (!selectedOrganization) return;
+    this.setData({
+      selectedOrganization,
+      organizationKeyword: selectedOrganization.name,
+      organizationSuggestions: [],
+    });
+  },
+
+  clearOrganization() {
+    this.setData({ organizationKeyword: "", organizationSuggestions: [], selectedOrganization: null });
   },
   onTopicChange(e) {
     const idx = Number(e.detail.value);
@@ -168,14 +186,9 @@ Page({
   },
 
   async onCreate() {
-    const { title, orgList, orgIndex, durationMinutes, location, topicId } = this.data;
-    const org = orgList[orgIndex];
+    const { title, selectedOrganization, durationMinutes, location, topicId } = this.data;
     if (!title.trim()) {
       wx.showToast({ title: "请输入标题", icon: "none" });
-      return;
-    }
-    if (!org) {
-      wx.showToast({ title: "请选择单位", icon: "none" });
       return;
     }
     this.setData({ creating: true });
@@ -185,14 +198,14 @@ Page({
         method: "POST",
         data: {
           title: title.trim(),
-          organization_id: org.id,
+          organization_id: selectedOrganization ? selectedOrganization.id : undefined,
           topic_id: topicId || undefined,
           duration_minutes: Number(durationMinutes) || 60,
           location: (location || "").trim() || undefined,
         },
       });
       wx.showToast({ title: "已创建", icon: "success" });
-      this.setData({ title: "", location: "" });
+      this.setData({ title: "", location: "", organizationKeyword: "", selectedOrganization: null });
       await this.loadTrainings();
       this.showQrData(data);
     } catch (e) {

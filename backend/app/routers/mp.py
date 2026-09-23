@@ -4,6 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -213,7 +214,8 @@ def mp_organizations(
         query = query.order_by(priority_order, Organization.name)
     else:
         query = query.order_by(Organization.name)
-    rows = query.limit(100).all()
+    # 注册时需要能检索、选择已录入的全部单位，不能因数量较多而漏掉后续单位。
+    rows = query.all()
     districts = {d.id: d.name for d in db.query(District).filter(District.id.in_([o.district_id for o in rows] or [-1])).all()}
     return [
         MpOrgListItem(
@@ -383,27 +385,30 @@ def mp_checkin(
         )
         .first()
     )
-    already_checked = existing is not None
-    if not existing:
-        ok, msg = session_allows_checkin(sess, db)
-        if not ok:
-            raise HTTPException(400, msg)
-        existing = TrainingAttendance(
-            session_id=sess.id,
-            person_id=person.id,
-            organization_id=person.organization_id,
-            duration_minutes=int(sess.duration_minutes or 0),
-        )
-        db.add(existing)
+    if existing:
+        raise HTTPException(409, "您已完成本场培训签到，请勿重复签到")
+
+    ok, msg = session_allows_checkin(sess, db)
+    if not ok:
+        raise HTTPException(400, msg)
+    existing = TrainingAttendance(
+        session_id=sess.id,
+        person_id=person.id,
+        organization_id=person.organization_id,
+        duration_minutes=int(sess.duration_minutes or 0),
+    )
+    db.add(existing)
+    try:
         db.commit()
-    elif not existing.organization_id and person.organization_id:
-        existing.organization_id = person.organization_id
-        db.commit()
+    except IntegrityError:
+        # 两次请求同时到达时，数据库唯一索引仍会阻止第二次写入。
+        db.rollback()
+        raise HTTPException(409, "您已完成本场培训签到，请勿重复签到")
 
     org = db.get(Organization, sess.organization_id)
     return MpCheckinOut(
         ok=True,
-        already_checked=already_checked,
+        already_checked=False,
         session_id=sess.id,
         title=sess.title,
         start_at=sess.start_at,

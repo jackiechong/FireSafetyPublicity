@@ -29,7 +29,7 @@
           <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? "启用" : "停用" }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="320" fixed="right">
+      <el-table-column label="操作" width="370" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">权限</el-button>
           <el-button link type="warning" @click="openPwd(row)">改密</el-button>
@@ -37,6 +37,7 @@
             生成绑定码
           </el-button>
           <el-button link type="info" :disabled="!row.wx_bound" @click="openBindings(row)">微信列表</el-button>
+          <el-button link type="danger" :disabled="row.username === 'admin'" @click="removeAccount(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -279,6 +280,22 @@ async function submitEdit() {
     console.error(e);
   } finally {
     saving.value = false;
+  }
+}
+
+async function removeAccount(row) {
+  if (row.username === "admin") return;
+  try {
+    await ElMessageBox.confirm(
+      `确定删除管理员账号“${row.username}”吗？该账号的小程序微信绑定也将一并解除。`,
+      "删除管理员",
+      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
+    );
+    await http.delete(`/api/admin/accounts/${row.id}`);
+    ElMessage.success("账号已删除");
+    await load();
+  } catch (e) {
+    if (e !== "cancel") ElMessage.error(e?.response?.data?.detail || "删除失败");
   }
 }
 

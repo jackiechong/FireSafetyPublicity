@@ -12,16 +12,25 @@
       <input class="input" placeholder="如：电气火灾防范培训" value="{{title}}" bindinput="onTitle" />
     </view>
     <view class="field">
-      <text class="label">所在区县</text>
+      <text class="label">筛选区县（选填）</text>
       <picker mode="selector" range="{{districtNames}}" value="{{districtIndex}}" bindchange="onDistrictChange">
         <view class="picker">{{districtNames[districtIndex] || '请选择'}}</view>
       </picker>
     </view>
-    <view class="field">
-      <text class="label">参训单位</text>
-      <picker mode="selector" range="{{orgLabels}}" value="{{orgIndex}}" bindchange="onOrgChange" disabled="{{!orgLabels.length}}">
-        <view class="picker">{{orgLabels[orgIndex] || '请先选区县'}}</view>
-      </picker>
+    <view class="field org-field">
+      <text class="label">参训单位（选填）</text>
+      <view class="org-input-wrap">
+        <input class="input" placeholder="不指定单位" value="{{organizationKeyword}}" bindinput="onOrganizationKeyword" />
+        <text wx:if="{{selectedOrganization}}" class="clear-org" bindtap="clearOrganization">清除</text>
+      </view>
+      <view wx:if="{{organizationSuggestions.length}}" class="org-suggestions">
+        <block wx:for="{{organizationSuggestions}}" wx:key="id">
+          <view class="org-suggestion" data-id="{{item.id}}" bindtap="onSelectOrganization">
+            <view class="org-name">{{item.name}}</view>
+            <view class="org-meta">{{item.district_name || ''}} · {{orgTypeLabels[item.org_type] || item.org_type}}</view>
+          </view>
+        </block>
+      </view>
     </view>
     <view class="field">
       <text class="label">培训主题</text>

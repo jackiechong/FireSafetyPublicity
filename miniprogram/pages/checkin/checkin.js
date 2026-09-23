@@ -10,6 +10,10 @@ function getSessionId(options = {}) {
   return 0;
 }
 
+function needsProfileBinding(error) {
+  return String(error && error.message ? error.message : "").includes("完成单位");
+}
+
 Page({
   data: {
     sessionId: 0,
@@ -64,7 +68,7 @@ Page({
         error: activeList.length ? "" : "今天暂无可加入的培训场次",
       });
     } catch (e) {
-      if (e.statusCode === 409 || String(e.message || "").includes("完成单位")) {
+      if (needsProfileBinding(e)) {
         const q = this.data.sessionId ? `?session_id=${this.data.sessionId}` : "";
         wx.redirectTo({ url: `/pages/bind/bind${q}` });
         return;
@@ -93,8 +97,12 @@ Page({
       this.setData({ result });
       wx.showToast({ title: result.already_checked ? "已签到" : "签到成功" });
     } catch (e) {
-      if (e.statusCode === 409 || String(e.message || "").includes("完成单位")) {
+      if (needsProfileBinding(e)) {
         wx.redirectTo({ url: `/pages/bind/bind?session_id=${this.data.sessionId}` });
+        return;
+      }
+      if (e.statusCode === 409) {
+        wx.showToast({ title: e.message || "您已签到，请勿重复操作", icon: "none" });
         return;
       }
       this.setData({ error: e.message || "签到失败" });

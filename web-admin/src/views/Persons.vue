@@ -31,6 +31,18 @@
       >
         <el-option v-for="o in filterOrgs" :key="o.id" :label="o.name" :value="o.id" />
       </el-select>
+      <el-select
+        v-model="filterPersonCategory"
+        clearable
+        filterable
+        allow-create
+        default-first-option
+        placeholder="人员类别"
+        class="filter"
+        @change="load"
+      >
+        <el-option v-for="item in personCategoryOptions" :key="item" :label="item" :value="item" />
+      </el-select>
       <el-button type="primary" @click="load">查询</el-button>
     </div>
 
@@ -46,6 +58,9 @@
       <el-table-column prop="job_title" label="身份/岗位" min-width="130">
         <template #default="{ row }">{{ row.job_title || "—" }}</template>
       </el-table-column>
+      <el-table-column prop="person_category" label="人员类别" min-width="130">
+        <template #default="{ row }">{{ row.person_category || "—" }}</template>
+      </el-table-column>
       <el-table-column label="管理员" width="160">
         <template #default="{ row }">
           <el-tag v-if="row.is_admin" type="success">
@@ -58,10 +73,11 @@
       <el-table-column prop="created_at" label="注册时间" width="150">
         <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="170" fixed="right">
+      <el-table-column label="操作" width="210" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" :disabled="!canEdit" @click="openEdit(row)">编辑</el-button>
           <el-button link type="danger" :disabled="currentAdmin?.role !== 'detachment'" @click="unbindPerson(row)">解除绑定</el-button>
+          <el-button link type="danger" :disabled="!canEdit" @click="removePerson(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -87,6 +103,19 @@
         <el-form-item label="身份/岗位">
           <el-select v-model="form.job_title" clearable filterable placeholder="请选择身份/岗位" style="width: 100%">
             <el-option v-for="item in jobTitleSelectOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="人员类别">
+          <el-select
+            v-model="form.person_category"
+            clearable
+            filterable
+            allow-create
+            default-first-option
+            placeholder="请选择或输入人员类别"
+            style="width: 100%"
+          >
+            <el-option v-for="item in personCategoryOptions" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="currentAdmin?.role === 'detachment'" label="管理员">
@@ -135,6 +164,7 @@ const jobTitleOptions = ref([]);
 const keyword = ref("");
 const filterDistrictId = ref();
 const filterOrganizationId = ref();
+const filterPersonCategory = ref("");
 const loading = ref(false);
 const saving = ref(false);
 const currentAdmin = ref(null);
@@ -151,6 +181,7 @@ const form = reactive({
   district_id: undefined,
   organization_id: undefined,
   job_title: "",
+  person_category: "",
   is_admin: false,
 });
 
@@ -159,6 +190,12 @@ const districtFilterOptions = computed(() => [{ id: 0, name: "葫芦岛支队" }
 const jobTitleSelectOptions = computed(() => {
   const current = form.job_title ? [form.job_title] : [];
   return [...new Set([...jobTitleOptions.value, ...current].filter(Boolean))];
+});
+const personCategoryOptions = computed(() => {
+  const fromRows = rows.value.map((x) => x.person_category).filter(Boolean);
+  const current = form.person_category ? [form.person_category] : [];
+  const filtering = filterPersonCategory.value ? [filterPersonCategory.value] : [];
+  return [...new Set([...fromRows, ...current, ...filtering].filter(Boolean))];
 });
 
 function formatTime(iso) {
@@ -196,6 +233,7 @@ async function load() {
     if (keyword.value.trim()) params.q = keyword.value.trim();
     if (filterDistrictId.value && Number(filterDistrictId.value) > 0) params.district_id = Number(filterDistrictId.value);
     if (filterOrganizationId.value) params.organization_id = Number(filterOrganizationId.value);
+    if (filterPersonCategory.value) params.person_category = filterPersonCategory.value;
     const { data } = await http.get("/api/admin/persons", { params });
     rows.value = data || [];
   } catch (e) {
@@ -213,6 +251,7 @@ async function openEdit(row) {
     district_id: row.district_id,
     organization_id: row.organization_id,
     job_title: row.job_title || "",
+    person_category: row.person_category || "",
     is_admin: !!row.is_admin,
   });
   editOrgs.value = row.district_id ? await loadOrgs(row.district_id) : [];
@@ -241,6 +280,7 @@ async function submitEdit() {
       district_id: Number(form.district_id),
       organization_id: Number(form.organization_id),
       job_title: form.job_title.trim() || null,
+      person_category: form.person_category.trim() || null,
       is_admin: !!form.is_admin,
     });
     ElMessage.success("人员信息已保存");
@@ -278,6 +318,21 @@ async function unbindPerson(row) {
     await load();
   } catch (e) {
     if (e !== "cancel") ElMessage.error(errorMessage(e, "解除失败"));
+  }
+}
+
+async function removePerson(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除「${row.name || row.phone || "该人员"}」吗？删除后该人员的培训签到记录也会一并删除，此操作不可恢复。`,
+      "删除人员",
+      { type: "warning", confirmButtonText: "确认删除", cancelButtonText: "取消" }
+    );
+    await http.delete(`/api/admin/persons/${row.person_id}`);
+    ElMessage.success("人员已删除");
+    await load();
+  } catch (e) {
+    if (e !== "cancel") ElMessage.error(errorMessage(e, "删除失败"));
   }
 }
 

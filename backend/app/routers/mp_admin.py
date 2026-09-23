@@ -346,17 +346,33 @@ def mp_admin_stats_person_trainings(
 def mp_admin_organizations(
     admin: Annotated[AdminUser, Depends(get_current_mp_admin)],
     db: Session = Depends(get_db),
-    district_id: int = Query(..., ge=1),
+    district_id: Optional[int] = Query(None, ge=1),
     q: str = Query(""),
 ):
-    query = db.query(Organization).filter(Organization.district_id == district_id)
+    query = db.query(Organization)
+    if district_id is not None:
+        query = query.filter(Organization.district_id == district_id)
     bid = brigade_filter_brigade_id(admin)
     if bid is not None:
         query = query.filter(Organization.brigade_id == bid)
     if q.strip():
         query = query.filter(Organization.name.like(f"%{q.strip()}%"))
-    rows = query.order_by(Organization.name).limit(100).all()
-    return [MpOrgListItem(id=o.id, name=o.name, org_type=str(o.org_type)) for o in rows]
+    rows = (
+        query.join(District, District.id == Organization.district_id)
+        .order_by(Organization.name)
+        .limit(30)
+        .all()
+    )
+    return [
+        MpOrgListItem(
+            id=o.id,
+            name=o.name,
+            org_type=str(o.org_type),
+            district_id=o.district_id,
+            district_name=o.district.name if o.district else None,
+        )
+        for o in rows
+    ]
 
 
 @router.get("/trainings", response_model=List[TrainingSessionOut])

@@ -43,8 +43,66 @@
         <el-table-column prop="topic_name" label="培训主题" min-width="140" />
         <el-table-column prop="brigade_name" label="开展大队" min-width="120" />
         <el-table-column prop="organization_name" label="单位" min-width="180" />
+        <el-table-column v-if="canEditTraining" label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openTrainingEdit(row)">编辑</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </section>
+
+    <el-dialog v-model="trainingEditVisible" title="编辑培训" width="560px" destroy-on-close>
+      <el-form :model="trainingEditForm" label-width="90px">
+        <el-form-item label="培训名称" required>
+          <el-input v-model="trainingEditForm.title" maxlength="256" />
+        </el-form-item>
+        <el-form-item label="培训主题">
+          <el-select v-model="trainingEditForm.topic_id" clearable style="width: 100%">
+            <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="培训单位" required>
+          <el-select
+            v-model="trainingEditForm.organization_id"
+            filterable
+            remote
+            reserve-keyword
+            placeholder="输入单位名称搜索"
+            :remote-method="remoteEditOrganization"
+            :loading="editingOrganizationLoading"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="o in trainingOrganizationOptions"
+              :key="o.id"
+              :label="o.district_name ? `${o.name}（${o.district_name}）` : o.name"
+              :value="o.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="开始时间" required>
+          <el-date-picker
+            v-model="trainingEditForm.start_at"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="时长(分钟)">
+          <el-input-number v-model="trainingEditForm.duration_minutes" :min="0" />
+        </el-form-item>
+        <el-form-item label="地点">
+          <el-input v-model="trainingEditForm.location" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="trainingEditForm.remark" type="textarea" rows="3" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="trainingEditVisible = false">取消</el-button>
+        <el-button type="primary" :loading="trainingEditSaving" @click="saveTrainingEdit">保存</el-button>
+      </template>
+    </el-dialog>
 
     <section class="grid">
       <div class="panel">
@@ -89,7 +147,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import http from "../api/http";
 
@@ -106,6 +164,22 @@ const summary = ref([]);
 const jobStats = ref(null);
 const topicStats = ref([]);
 const completion = ref([]);
+const currentAdmin = ref(null);
+const trainingEditVisible = ref(false);
+const trainingEditSaving = ref(false);
+const editingTraining = ref(null);
+const trainingOrganizationOptions = ref([]);
+const editingOrganizationLoading = ref(false);
+const trainingEditForm = reactive({
+  title: "",
+  topic_id: null,
+  organization_id: null,
+  start_at: "",
+  duration_minutes: 0,
+  location: "",
+  remark: "",
+});
+const canEditTraining = computed(() => currentAdmin.value?.role === "detachment");
 
 function params(extra = {}) {
   const p = { ...extra };
@@ -140,6 +214,64 @@ async function remoteOrg(q) {
     orgOptions.value = data || [];
   } finally {
     orgLoading.value = false;
+  }
+}
+
+function openTrainingEdit(row) {
+  editingTraining.value = row;
+  Object.assign(trainingEditForm, {
+    title: row.title || "",
+    topic_id: row.topic_id || null,
+    organization_id: row.organization_id,
+    start_at: row.start_at ? String(row.start_at).slice(0, 19) : "",
+    duration_minutes: Number(row.duration_minutes || 0),
+    location: row.location || "",
+    remark: row.remark || "",
+  });
+  trainingOrganizationOptions.value = [
+    {
+      id: row.organization_id,
+      name: row.organization_name,
+      district_name: "",
+    },
+  ];
+  trainingEditVisible.value = true;
+}
+
+async function remoteEditOrganization(q) {
+  if (!q) return;
+  editingOrganizationLoading.value = true;
+  try {
+    const { data } = await http.get("/api/admin/organizations/suggest", { params: { q, limit: 30 } });
+    trainingOrganizationOptions.value = data || [];
+  } finally {
+    editingOrganizationLoading.value = false;
+  }
+}
+
+async function saveTrainingEdit() {
+  if (!editingTraining.value || !trainingEditForm.title.trim() || !trainingEditForm.start_at || !trainingEditForm.organization_id) {
+    ElMessage.warning("请填写培训名称、开始时间并选择培训单位");
+    return;
+  }
+  trainingEditSaving.value = true;
+  try {
+    await http.patch(`/api/admin/trainings/${editingTraining.value.session_id}`, {
+      title: trainingEditForm.title.trim(),
+      topic_id: trainingEditForm.topic_id || null,
+      organization_id: trainingEditForm.organization_id,
+      start_at: trainingEditForm.start_at,
+      duration_minutes: Number(trainingEditForm.duration_minutes || 0),
+      location: trainingEditForm.location.trim() || null,
+      remark: trainingEditForm.remark.trim() || null,
+    });
+    ElMessage.success("培训数据已修改");
+    trainingEditVisible.value = false;
+    await loadAll();
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || "修改失败");
+  } finally {
+    trainingEditSaving.value = false;
   }
 }
 
@@ -205,7 +337,8 @@ async function uploadPersons({ file }) {
 }
 
 onMounted(async () => {
-  await loadMeta();
+  const [me] = await Promise.all([http.get("/api/admin/me"), loadMeta()]);
+  currentAdmin.value = me.data;
   await loadAll();
 });
 </script>

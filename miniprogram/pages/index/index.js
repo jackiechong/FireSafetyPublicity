@@ -21,9 +21,11 @@ const COLOR_MAP = {
   equipment: "red",
 };
 const ACTIVITY_CATEGORY = { code: "activity", name: "热门活动" };
+const NOTICE_CATEGORY = { code: "notice", name: "通知公告" };
 
 function normalizeArticle(row = {}) {
   const content = row.content || "请在网页端知识专栏维护栏目内容。";
+  const createdAt = row.created_at || "";
   return {
     id: row.id || 0,
     category: row.category || "",
@@ -31,6 +33,8 @@ function normalizeArticle(row = {}) {
     content,
     summary: content.replace(/\s+/g, " ").slice(0, 34),
     image_url: resolveAssetUrl(row.image_url || ""),
+    created_at: createdAt,
+    date_text: createdAt ? String(createdAt).slice(5, 10).replace("-", "-") : "",
   };
 }
 
@@ -47,6 +51,10 @@ Page({
     loadingAction: "",
     bannerImageUrl: "",
     modules: [],
+    noticeArticle: normalizeArticle({
+      title: "培训活动、学习内容与签到记录服务已开放",
+      content: "培训活动、学习内容与签到记录服务已开放",
+    }),
     activityArticles: [],
   },
 
@@ -110,14 +118,22 @@ Page({
       );
       const allArticles = articleGroups.flat();
       let activityArticles = [];
+      let noticeArticle = null;
       try {
         const activityRows = await request({ url: `/api/mp/knowledge-articles?category=${ACTIVITY_CATEGORY.code}` });
         activityArticles = (activityRows || []).map(normalizeArticle);
       } catch {
         activityArticles = [];
       }
+      try {
+        const noticeRows = await request({ url: `/api/mp/knowledge-articles?category=${NOTICE_CATEGORY.code}` });
+        noticeArticle = (noticeRows || []).map(normalizeArticle)[0] || null;
+      } catch {
+        noticeArticle = null;
+      }
       this.setData({
         modules,
+        noticeArticle: noticeArticle || this.data.noticeArticle,
         activityArticles: activityArticles.length ? activityArticles.slice(0, 2) : allArticles.length ? allArticles.slice(0, 2) : this.data.activityArticles,
       });
     } catch {
@@ -134,6 +150,20 @@ Page({
 
   openActivities() {
     this.openCategory(ACTIVITY_CATEGORY);
+  },
+
+  openNotice() {
+    this.openCategory(NOTICE_CATEGORY);
+  },
+
+  openOfficialAccount() {
+    if (typeof wx.openOfficialAccount !== "function") {
+      wx.showToast({ title: "当前微信版本不支持", icon: "none" });
+      return;
+    }
+    wx.openOfficialAccount({
+      fail: () => wx.showToast({ title: "请先在小程序后台关联公众号", icon: "none" }),
+    });
   },
 
   openCategory(item) {
