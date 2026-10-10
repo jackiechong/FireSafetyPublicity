@@ -421,6 +421,14 @@ class StatsDistrictItem(BaseModel):
     session_count: int
 
 
+class StatsBrigadeItem(BaseModel):
+    brigade_id: int
+    brigade_name: str
+    total_minutes: int
+    session_count: int
+    person_count: int
+
+
 class StatsPersonItem(BaseModel):
     person_id: int
     name: str
@@ -503,6 +511,7 @@ class StatsSearchItem(BaseModel):
     subtitle: str
     organization_id: Optional[int] = None
     district_id: Optional[int] = None
+    brigade_id: Optional[int] = None
     person_id: Optional[int] = None
 
 

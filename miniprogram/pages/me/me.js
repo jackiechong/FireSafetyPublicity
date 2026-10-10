@@ -64,6 +64,9 @@ Page({
   goCheckin() {
     wx.navigateTo({ url: "/pages/checkin/checkin" });
   },
+  goMyTrainings() {
+    wx.navigateTo({ url: "/pages/trainings/trainings" });
+  },
   async loadKnowledge(category) {
     try {
       const list = await request({ url: `/api/mp/knowledge-articles?category=${category}` });

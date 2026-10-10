@@ -90,15 +90,15 @@
 
       <div class="panel">
         <div class="panel-head">
-          <h2>人员类别</h2>
+          <h2>职务岗位</h2>
           <span>按参训人数</span>
         </div>
         <div class="rank-list">
-          <div v-for="item in categoryRanks" :key="item.name" class="rank-row">
+          <div v-for="item in jobTitleRanks" :key="item.name" class="rank-row">
             <span>{{ item.name }}</span>
             <strong>{{ item.value }}人</strong>
           </div>
-          <el-empty v-if="!categoryRanks.length" description="暂无类别数据" />
+          <el-empty v-if="!jobTitleRanks.length" description="暂无职务岗位数据" />
         </div>
       </div>
 
@@ -151,7 +151,7 @@ const topicStats = ref([]);
 const trainings = ref([]);
 const persons = ref([]);
 const orgs = ref([]);
-const categoryRanks = ref([]);
+const jobTitleRanks = ref([]);
 const orgRanks = ref([]);
 
 const districtChartRef = ref(null);
@@ -254,24 +254,26 @@ async function loadAll() {
   trainings.value = summary.data || [];
   persons.value = people.data || [];
   orgs.value = organizations.data || [];
-  await loadCategoryRanks(jobs.data || [], params);
+  await loadJobTitleRanks(jobs.data || [], params);
   await loadOrgRanks();
   await renderCharts();
 }
 
-async function loadCategoryRanks(jobs, params) {
-  const names = [...new Set([...(persons.value || []).map((p) => p.person_category || p.job_title).filter(Boolean), ...(jobs || []).map((j) => j.name)])].slice(0, 8);
+async function loadJobTitleRanks(jobs, params) {
+  const names = [...new Set([...(persons.value || []).map((p) => p.job_title).filter(Boolean), ...(jobs || []).map((j) => j.name)])].slice(0, 8);
   const rows = await Promise.all(
     names.map(async (name) => {
       try {
-        const { data } = await http.get("/api/admin/stats/by-job-title", { params: { ...params, job_title: name } });
+        const { data } = await http.get("/api/admin/stats/by-job-title", {
+          params: { ...params, job_title: name, job_title_only: true },
+        });
         return { name, value: data.total_person_count || 0 };
       } catch {
         return { name, value: 0 };
       }
     })
   );
-  categoryRanks.value = rows.filter((x) => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
+  jobTitleRanks.value = rows.filter((x) => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
 }
 
 async function loadOrgRanks() {

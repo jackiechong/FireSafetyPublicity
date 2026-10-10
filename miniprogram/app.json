@@ -6,6 +6,7 @@
     "pages/checkin/checkin",
     "pages/bind/bind",
     "pages/me/me",
+    "pages/trainings/trainings",
     "pages/privacy/privacy",
     "pages/admin/bind",
     "pages/admin/index",

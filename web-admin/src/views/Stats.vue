@@ -2,7 +2,7 @@
   <div class="page">
     <h2>统计数据</h2>
     <p class="tip">
-      默认查看葫芦岛地区年度培训时长；可按年、月、日切换周期，场次和时长随选择同步变化。
+      默认查看全市年度培训数据；可按年、月、日及培训主办单位筛选，场次、人数和时长随选择同步变化。
     </p>
 
     <el-form :inline="true" class="period-toolbar">
@@ -56,40 +56,40 @@
     <el-row :gutter="16" class="summary-row">
       <el-col :xs="12" :sm="6">
         <el-card shadow="hover" class="sum-card">
-          <div class="sum-label">{{ districtFilter ? "当前区县培训时长" : "全市培训总时长" }}</div>
+          <div class="sum-label">{{ brigadeFilter ? "当前主办单位培训时长" : "全市培训总时长" }}</div>
           <div class="sum-value">{{ displayTotalMinutesLabel }}</div>
         </el-card>
       </el-col>
       <el-col :xs="12" :sm="6">
-        <el-card shadow="hover" class="sum-card clickable" @click="openDistrictTrainings">
-          <div class="sum-label">{{ districtFilter ? "当前区县培训场次" : "全市培训场次" }}</div>
+        <el-card shadow="hover" class="sum-card clickable" @click="openBrigadeTrainings">
+          <div class="sum-label">{{ brigadeFilter ? "当前主办单位培训场次" : "全市培训场次" }}</div>
           <div class="sum-value">{{ displaySessionCount }}</div>
         </el-card>
       </el-col>
       <el-col :xs="12" :sm="6">
         <el-card shadow="hover" class="sum-card">
-          <div class="sum-label">{{ districtFilter ? "涉及类型数" : "涉及区县数" }}</div>
-          <div class="sum-value">{{ displayExtra }}</div>
+          <div class="sum-label">{{ brigadeFilter ? "当前主办单位培训人数" : "全市培训人数" }}</div>
+          <div class="sum-value">{{ displayPersonCount }}</div>
         </el-card>
       </el-col>
       <el-col :xs="12" :sm="6">
         <el-card shadow="hover" class="sum-card">
-          <div class="sum-label">选中单位参训人数</div>
-          <div class="sum-value">{{ orgPersonRows.length || "—" }}</div>
+          <div class="sum-label">有培训记录的主办单位</div>
+          <div class="sum-value">{{ displayActiveBrigadeCount }}</div>
         </el-card>
       </el-col>
     </el-row>
 
     <el-form :inline="true" class="toolbar">
-      <el-form-item label="区县">
+      <el-form-item label="培训主办单位">
         <el-select
-          v-model="districtFilter"
+          v-model="brigadeFilter"
           clearable
-          placeholder="不选：全市区县对比"
+          placeholder="不选：查看全市主办单位对比"
           style="width: 220px"
-          @change="onDistrictChange"
+          @change="onBrigadeChange"
         >
-          <el-option v-for="d in districtOptions" :key="d.id" :label="d.name" :value="d.id" />
+          <el-option v-for="b in brigadeOptions" :key="b.id" :label="b.name" :value="b.id" />
         </el-select>
       </el-form-item>
       <el-form-item v-if="false" label="单位">
@@ -113,22 +113,17 @@
 
     <div ref="chartRef" class="chart" />
 
-    <template v-if="districtFilter && orgFilter">
-      <h3 class="sub-title">该单位参训人员（共 {{ orgPersonRows.length }} 人）</h3>
-      <el-table :data="orgPersonRows" border stripe v-loading="orgPersonLoading" size="small" style="width: 100%">
+    <template v-if="brigadeFilter">
+      <h3 class="sub-title">当前主办单位培训场次（共 {{ displaySessionCount }} 场，{{ displayPersonCount }} 人）</h3>
+      <el-table :data="brigadeTrainingRows" border stripe v-loading="brigadeTrainingLoading" size="small" style="width: 100%">
         <el-table-column type="index" label="#" width="55" />
-        <el-table-column prop="name" label="姓名" width="110" />
-        <el-table-column prop="phone" label="手机号" width="130" />
-        <el-table-column prop="session_count" label="参训次数" width="100" />
-        <el-table-column label="累计时长" min-width="140">
-          <template #default="{ row }">
-            {{ formatTrainingHours(row.total_minutes) }}
-          </template>
+        <el-table-column prop="title" label="会议名称" min-width="220" />
+        <el-table-column label="开展时间" width="160">
+          <template #default="{ row }">{{ formatTime(row.start_at) }}</template>
         </el-table-column>
-        <el-table-column v-if="canRebindPersons" label="操作" width="90" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openPersonRebind(row)">重绑</el-button>
-          </template>
+        <el-table-column prop="person_count" label="培训人数" width="100" />
+        <el-table-column prop="topic_name" label="主题" min-width="120">
+          <template #default="{ row }">{{ row.topic_name || "未分类" }}</template>
         </el-table-column>
       </el-table>
     </template>
@@ -166,8 +161,8 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="districtTrainingVisible" title="当前区县培训场次" width="760px" destroy-on-close>
-      <el-table :data="districtTrainingRows" border stripe v-loading="districtTrainingLoading" size="small">
+    <el-dialog v-model="brigadeTrainingVisible" title="当前主办单位培训场次" width="760px" destroy-on-close>
+      <el-table :data="brigadeTrainingRows" border stripe v-loading="brigadeTrainingLoading" size="small">
         <el-table-column prop="title" label="会议名称" min-width="200" />
         <el-table-column label="开展时间" width="160">
           <template #default="{ row }">{{ formatTime(row.start_at) }}</template>
@@ -179,7 +174,7 @@
         <el-table-column prop="brigade_name" label="主办单位" min-width="130" />
       </el-table>
       <template #footer>
-        <el-button @click="districtTrainingVisible = false">关闭</el-button>
+        <el-button @click="brigadeTrainingVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -199,6 +194,9 @@ const searchQ = ref("");
 const districtOptions = ref([]);
 const districtData = ref([]);
 const districtFilter = ref();
+const brigadeOptions = ref([]);
+const brigadeData = ref([]);
+const brigadeFilter = ref();
 const orgsInDistrict = ref([]);
 const typeStatsInDistrict = ref([]);
 const orgFilter = ref();
@@ -219,9 +217,9 @@ const personRebindForm = reactive({
 const searchLegacyHintShown = ref(false);
 const periodMode = ref("year");
 const periodValue = ref(new Date());
-const districtTrainingVisible = ref(false);
-const districtTrainingLoading = ref(false);
-const districtTrainingRows = ref([]);
+const brigadeTrainingVisible = ref(false);
+const brigadeTrainingLoading = ref(false);
+const brigadeTrainingRows = ref([]);
 
 const canRebindPersons = computed(() => currentAdmin.value?.role === "detachment");
 
@@ -238,28 +236,33 @@ const periodValueFormat = computed(() => {
 });
 
 const displayTotalMinutes = computed(() => {
-  if (districtFilter.value) {
-    return typeStatsInDistrict.value.reduce((s, o) => s + o.total_minutes, 0);
+  if (brigadeFilter.value) {
+    return selectedBrigadeStats.value?.total_minutes || 0;
   }
-  return districtData.value.reduce((s, d) => s + d.total_minutes, 0);
+  return brigadeData.value.reduce((s, item) => s + Number(item.total_minutes || 0), 0);
 });
 
 const displayTotalMinutesLabel = computed(() => formatTrainingHours(displayTotalMinutes.value));
 
 const displaySessionCount = computed(() => {
-  if (districtFilter.value != null && districtFilter.value !== "" && Number(districtFilter.value) > 0) {
-    const did = Number(districtFilter.value);
-    const d = districtData.value.find((x) => Number(x.district_id) === did);
-    return d ? d.session_count : "—";
+  if (brigadeFilter.value) {
+    return selectedBrigadeStats.value?.session_count || 0;
   }
-  return districtData.value.reduce((s, d) => s + d.session_count, 0);
+  return brigadeData.value.reduce((s, item) => s + Number(item.session_count || 0), 0);
 });
 
-const displayExtra = computed(() => {
-  if (districtFilter.value) {
-    return typeStatsInDistrict.value.filter((x) => x.total_minutes > 0 || x.organization_count > 0).length;
-  }
-  return districtData.value.filter((d) => d.total_minutes > 0 || d.session_count > 0).length;
+const selectedBrigadeStats = computed(() => {
+  const id = Number(brigadeFilter.value);
+  return brigadeData.value.find((item) => Number(item.brigade_id) === id);
+});
+
+const displayPersonCount = computed(() => {
+  if (brigadeFilter.value) return selectedBrigadeStats.value?.person_count || 0;
+  return brigadeData.value.reduce((s, item) => s + Number(item.person_count || 0), 0);
+});
+
+const displayActiveBrigadeCount = computed(() => {
+  return brigadeData.value.filter((item) => Number(item.session_count || 0) > 0).length;
 });
 
 function normalizePeriodValue() {
@@ -335,6 +338,7 @@ async function querySearch(queryString) {
             subtitle: `${dname} · ${ot}`,
             organization_id: o.id,
             district_id: o.district_id,
+            brigade_id: o.brigade_id,
             value: o.name,
           };
         });
@@ -397,36 +401,22 @@ async function loadOrgsForDistrict() {
 
 async function handleSearchSelect(item) {
   searchQ.value = "";
-  const applyOrg = async () => {
-    await loadOrgsForDistrict();
-    orgFilter.value = item.organization_id;
-    await onOrgChange();
-    await renderChart();
-  };
-
-  if (item.kind === "organization") {
-    if (item.district_id == null) {
-      ElMessage.warning("未找到区县信息");
-      return;
-    }
-    districtFilter.value = Number(item.district_id);
-    await applyOrg();
+  if (item.brigade_id == null) {
+    ElMessage.warning("该记录未关联培训主办单位");
     return;
   }
-
-  if (item.kind === "person") {
-    if (item.district_id == null || item.organization_id == null) {
-      ElMessage.warning("该人员未关联区县或单位，无法跳转");
-      return;
-    }
-    districtFilter.value = Number(item.district_id);
-    await applyOrg();
-  }
+  brigadeFilter.value = Number(item.brigade_id);
+  await onBrigadeChange();
 }
 
 async function loadDistrictsMeta() {
   const { data } = await http.get("/api/admin/districts");
   districtOptions.value = [{ id: 0, name: "葫芦岛支队" }, ...(data || [])];
+}
+
+async function loadBrigadesMeta() {
+  const { data } = await http.get("/api/admin/brigades");
+  brigadeOptions.value = data || [];
 }
 
 async function loadCurrentAdmin() {
@@ -439,15 +429,20 @@ async function loadDistrictStats() {
   districtData.value = data;
 }
 
+async function loadBrigadeStats() {
+  const { data } = await http.get("/api/admin/stats/by-brigade", { params: statsParams() });
+  brigadeData.value = data || [];
+}
+
 function renderBarChart() {
   if (!chartRef.value) return;
   if (!chart) chart = echarts.init(chartRef.value);
-  const list = districtData.value.length ? districtData.value : [];
-  const names = list.map((d) => d.district_name);
-  const vals = list.map((d) => d.total_minutes);
+  const list = brigadeData.value.length ? brigadeData.value : [];
+  const names = list.map((item) => item.brigade_name);
+  const vals = list.map((item) => item.total_minutes);
   chart.setOption(
     {
-      title: { text: "各区县培训时长对比", left: "center", textStyle: { fontSize: 16 } },
+      title: { text: "各培训主办单位培训时长对比", left: "center", textStyle: { fontSize: 16 } },
       tooltip: {
         trigger: "axis",
         formatter: (items) => {
@@ -547,11 +542,7 @@ function renderOrgPie() {
 
 async function renderChart() {
   await nextTick();
-  if (!districtFilter.value) {
-    renderBarChart();
-  } else {
-    renderOrgPie();
-  }
+  renderBarChart();
 }
 
 async function onDistrictChange() {
@@ -567,20 +558,33 @@ async function onDistrictChange() {
 }
 
 async function onPeriodChange() {
-  orgPersonRows.value = [];
-  await loadDistrictStats();
-  if (districtFilter.value) {
-    await loadOrgsForDistrict();
-  }
-  if (orgFilter.value) {
-    await onOrgChange();
-  }
+  await loadBrigadeStats();
+  if (brigadeFilter.value) await loadBrigadeTrainings();
   await renderChart();
 }
 
 async function onPeriodModeChange() {
   periodValue.value = new Date();
   await onPeriodChange();
+}
+
+async function loadBrigadeTrainings() {
+  brigadeTrainingRows.value = [];
+  if (!brigadeFilter.value) return;
+  brigadeTrainingLoading.value = true;
+  try {
+    const { data } = await http.get("/api/admin/stats/trainings-by-brigade", {
+      params: statsParams({ brigade_id: Number(brigadeFilter.value) }),
+    });
+    brigadeTrainingRows.value = data || [];
+  } finally {
+    brigadeTrainingLoading.value = false;
+  }
+}
+
+async function onBrigadeChange() {
+  await loadBrigadeTrainings();
+  await renderChart();
 }
 
 async function onOrgChange() {
@@ -597,21 +601,13 @@ async function onOrgChange() {
   }
 }
 
-async function openDistrictTrainings() {
-  if (!districtFilter.value || Number(districtFilter.value) <= 0) {
-    ElMessage.info("请先选择一个区县");
+async function openBrigadeTrainings() {
+  if (!brigadeFilter.value || Number(brigadeFilter.value) <= 0) {
+    ElMessage.info("请先选择培训主办单位");
     return;
   }
-  districtTrainingVisible.value = true;
-  districtTrainingLoading.value = true;
-  try {
-    const { data } = await http.get("/api/admin/stats/trainings-by-district", {
-      params: statsParams({ district_id: Number(districtFilter.value) }),
-    });
-    districtTrainingRows.value = data || [];
-  } finally {
-    districtTrainingLoading.value = false;
-  }
+  brigadeTrainingVisible.value = true;
+  await loadBrigadeTrainings();
 }
 
 function openPersonRebind(row) {
@@ -660,7 +656,8 @@ async function submitPersonRebind() {
 onMounted(async () => {
   await loadCurrentAdmin();
   await loadDistrictsMeta();
-  await loadDistrictStats();
+  await loadBrigadesMeta();
+  await loadBrigadeStats();
   await renderChart();
   window.addEventListener("resize", () => chart?.resize());
 });

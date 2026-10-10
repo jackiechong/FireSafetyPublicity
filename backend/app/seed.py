@@ -378,7 +378,7 @@ def _ensure_fire_brigade_organizations(db: Session) -> None:
     specs: list[tuple[str, str, str]] = []
     for district_name, brigade_code in DISTRICT_DEFAULT_BRIGADE.items():
         if district_name == "龙港区":
-            specs.append(("葫芦岛市消防救援支队", district_name, brigade_code))
+            specs.append(("葫芦岛市消防救援支队", district_name, "HLDZD"))
             specs.append(("龙港区消防救援大队", district_name, brigade_code))
         else:
             specs.append((f"{district_name}消防救援大队", district_name, brigade_code))
@@ -398,6 +398,14 @@ def _ensure_fire_brigade_organizations(db: Session) -> None:
             if existing.brigade_id != brigade.id:
                 existing.brigade_id = brigade.id
                 changed = True
+            if org_name == "葫芦岛市消防救援支队":
+                # 早期数据曾将支队系统单位错误挂到龙港大队；同步修正其创建的培训主办单位。
+                session_updates = db.query(TrainingSession).filter(
+                    TrainingSession.organization_id == existing.id,
+                    TrainingSession.brigade_id != brigade.id,
+                ).update({"brigade_id": brigade.id}, synchronize_session=False)
+                if session_updates:
+                    changed = True
             if existing.org_type != OrgType.emergency:
                 existing.org_type = OrgType.emergency
                 changed = True

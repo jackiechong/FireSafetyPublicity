@@ -111,6 +111,6 @@ Page({
     }
   },
   goMe() {
-    wx.redirectTo({ url: "/pages/me/me" });
+    wx.redirectTo({ url: "/pages/trainings/trainings" });
   },
 });

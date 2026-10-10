@@ -20,8 +20,11 @@
     <view class="field org-field">
       <text class="label">参训单位（选填）</text>
       <view class="org-input-wrap">
-        <input class="input" placeholder="不指定单位" value="{{organizationKeyword}}" bindinput="onOrganizationKeyword" />
-        <text wx:if="{{selectedOrganization}}" class="clear-org" bindtap="clearOrganization">清除</text>
+        <input wx:if="{{!selectedOrganization}}" class="input" placeholder="不指定单位" value="{{organizationKeyword}}" bindinput="onOrganizationKeyword" />
+        <view wx:else class="org-selected-value" bindtap="editOrganization">
+          <text class="selected-org-name">{{selectedOrganization.name}}</text>
+          <text class="clear-org" catchtap="clearOrganization">清除</text>
+        </view>
       </view>
       <view wx:if="{{organizationSuggestions.length}}" class="org-suggestions">
         <block wx:for="{{organizationSuggestions}}" wx:key="id">

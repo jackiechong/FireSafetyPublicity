@@ -105,7 +105,8 @@ Page({
 
   async loadDistricts() {
     const list = await request({ url: "/api/mp/admin/districts" });
-    const districtList = [{ id: null, name: "全部区县" }, ...(list || [])];
+    // 市级培训不限定参训区县；支队管理员创建时，后端会归属到葫芦岛支队。
+    const districtList = [{ id: null, name: "葫芦岛市" }, ...(list || [])];
     this.setData({
       districtList,
       districtNames: districtList.map((d) => d.name),
@@ -164,6 +165,10 @@ Page({
       organizationKeyword: selectedOrganization.name,
       organizationSuggestions: [],
     });
+  },
+
+  editOrganization() {
+    this.setData({ selectedOrganization: null, organizationSuggestions: [] });
   },
 
   clearOrganization() {

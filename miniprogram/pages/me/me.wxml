@@ -18,9 +18,12 @@
     <view class="stats-sub">查看区县培训时长与类型占比</view>
   </view>
 
-  <view class="card stats-module">
-    <view class="stats-title">培训记录</view>
-    <view class="stats-sub">查看本人已加入的培训场次</view>
+  <view class="card stats-module record-entry" bindtap="goMyTrainings">
+    <view>
+      <view class="stats-title">培训记录</view>
+      <view class="stats-sub">查看本人已加入的培训场次</view>
+    </view>
+    <text class="entry-arrow">›</text>
   </view>
 
   <button wx:if="{{!person.is_admin}}" class="join-training-btn" bindtap="goCheckin">加入培训</button>

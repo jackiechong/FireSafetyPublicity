@@ -16,6 +16,16 @@
 .stats-module {
   margin-top: 12rpx;
 }
+.record-entry {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+.entry-arrow {
+  color: #9aa4b2;
+  font-size: 46rpx;
+  line-height: 1;
+}
 .join-training-btn {
   width: 560rpx;
   margin: 28rpx auto 24rpx;

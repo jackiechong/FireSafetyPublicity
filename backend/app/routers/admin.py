@@ -64,6 +64,7 @@ from app.schemas import (
     OrgTypeOptionUpdate,
     QuickTrainingCreate,
     QuickTrainingOut,
+    StatsBrigadeItem,
     StatsDistrictItem,
     StatsJobTitleSummary,
     StatsOrgCompletionItem,
@@ -160,6 +161,27 @@ def _is_detachment_brigade(db: Session, brigade_id: Optional[int]) -> bool:
         return False
     b = db.get(Brigade, brigade_id)
     return bool(b and b.code == DETACHMENT_BRIGADE_CODE)
+
+
+def _district_host_brigade_id(db: Session, district_id: int) -> int:
+    """返回区县培训在统计中应对应的主办大队。"""
+    district = db.get(District, district_id)
+    if not district:
+        raise HTTPException(404, "区县不存在")
+
+    # 每个区县均有一条“XX消防救援大队”的系统单位；龙港区同时存在
+    # “葫芦岛市消防救援支队”，因此不能仅用区县内任意单位反推主办大队。
+    org = (
+        db.query(Organization)
+        .filter(
+            Organization.district_id == district.id,
+            Organization.name == f"{district.name}消防救援大队",
+        )
+        .first()
+    )
+    if not org:
+        raise HTTPException(400, f"{district.name}未配置对应消防大队")
+    return org.brigade_id
 
 
 def _apply_time_range(query, start: Optional[datetime], end: Optional[datetime]):
@@ -1247,6 +1269,54 @@ def stats_by_district(
     return out
 
 
+@router.get("/stats/by-brigade", response_model=List[StatsBrigadeItem])
+def stats_by_brigade(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+):
+    """按培训主办单位汇总场次、参训人数和培训时长。"""
+    bid = brigade_filter_brigade_id(admin)
+    totals = (
+        db.query(
+            TrainingSession.brigade_id.label("brigade_id"),
+            func.count(func.distinct(TrainingSession.id)).label("session_count"),
+            func.count(func.distinct(TrainingAttendance.person_id)).label("person_count"),
+            func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0).label("total_minutes"),
+        )
+        .select_from(TrainingSession)
+        .outerjoin(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
+    )
+    if bid is not None:
+        totals = totals.filter(TrainingSession.brigade_id == bid)
+    totals = _apply_time_range(totals, start, end).group_by(TrainingSession.brigade_id).subquery()
+
+    brigades = db.query(
+        Brigade,
+        totals.c.total_minutes,
+        totals.c.session_count,
+        totals.c.person_count,
+    )
+    if bid is not None:
+        brigades = brigades.filter(Brigade.id == bid)
+    rows = (
+        brigades.outerjoin(totals, totals.c.brigade_id == Brigade.id)
+        .order_by(Brigade.id)
+        .all()
+    )
+    return [
+        StatsBrigadeItem(
+            brigade_id=brigade.id,
+            brigade_name=brigade.name,
+            total_minutes=int(total_minutes or 0),
+            session_count=int(session_count or 0),
+            person_count=int(person_count or 0),
+        )
+        for brigade, total_minutes, session_count, person_count in rows
+    ]
+
+
 @router.get("/stats/by-person", response_model=List[StatsPersonItem])
 def stats_by_person(
     admin: Annotated[AdminUser, Depends(get_current_admin)],
@@ -1448,6 +1518,7 @@ def stats_search_suggest(
                 subtitle=f"{dname} · {ot}",
                 organization_id=o.id,
                 district_id=o.district_id,
+                brigade_id=o.brigade_id,
             )
         )
 
@@ -1479,6 +1550,7 @@ def stats_search_suggest(
                     person_id=p.id,
                     organization_id=p.organization_id,
                     district_id=p.district_id,
+                    brigade_id=o.brigade_id if o else None,
                 )
             )
     return out
@@ -1603,26 +1675,29 @@ def stats_trainings_by_district(
     end: Optional[datetime] = None,
 ):
     bid = brigade_filter_brigade_id(admin)
-    att_org_id = _attendance_org_id()
-    q = (
-        db.query(
-            TrainingSession,
-            Organization.name.label("org_name"),
-            Brigade.name.label("brigade_name"),
-            TrainingTopicOption.name.label("topic_name"),
-            func.count(func.distinct(TrainingAttendance.person_id)).label("person_count"),
-        )
-        .select_from(TrainingAttendance)
-        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
-        .join(Organization, Organization.id == att_org_id)
-        .join(Brigade, Brigade.id == TrainingSession.brigade_id)
-        .outerjoin(TrainingTopicOption, TrainingTopicOption.id == TrainingSession.topic_id)
-        .filter(Organization.district_id == district_id)
-        .group_by(TrainingSession.id, Organization.name, Brigade.name, TrainingTopicOption.name)
+    host_brigade_id = _district_host_brigade_id(db, district_id)
+    q = _training_summary_query(admin, db, start, end).filter(
+        TrainingSession.brigade_id == host_brigade_id
     )
     if bid is not None:
         q = q.filter(TrainingSession.brigade_id == bid)
-    q = _apply_time_range(q, start, end)
+    return [_summary_item(r) for r in q.order_by(TrainingSession.start_at.desc()).limit(500).all()]
+
+
+@router.get("/stats/trainings-by-brigade", response_model=List[StatsTrainingSummaryItem])
+def stats_trainings_by_brigade(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    brigade_id: int = Query(..., ge=1),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+):
+    bid = brigade_filter_brigade_id(admin)
+    if bid is not None and bid != brigade_id:
+        raise HTTPException(403, "只能查看本大队培训数据")
+    if not db.get(Brigade, brigade_id):
+        raise HTTPException(404, "主办单位不存在")
+    q = _training_summary_query(admin, db, start, end).filter(TrainingSession.brigade_id == brigade_id)
     return [_summary_item(r) for r in q.order_by(TrainingSession.start_at.desc()).limit(500).all()]
 
 
@@ -1631,11 +1706,17 @@ def stats_by_job_title(
     admin: Annotated[AdminUser, Depends(get_current_admin)],
     db: Session = Depends(get_db),
     job_title: str = Query(..., min_length=1),
+    job_title_only: bool = Query(False, description="仅按职务岗位匹配，不包含人员类别"),
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
 ):
     bid = brigade_filter_brigade_id(admin)
     att_org_id = _attendance_org_id()
+    person_match = (
+        Person.job_title == job_title
+        if job_title_only
+        else or_(Person.person_category == job_title, Person.job_title == job_title)
+    )
     base = (
         db.query(
             District.id,
@@ -1647,15 +1728,13 @@ def stats_by_job_title(
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
         .join(Organization, Organization.id == att_org_id)
         .join(District, District.id == Organization.district_id)
-        .filter(or_(Person.person_category == job_title, Person.job_title == job_title))
+        .filter(person_match)
     )
     if bid is not None:
         base = base.filter(TrainingSession.brigade_id == bid)
     base = _apply_time_range(base, start, end)
     rows = base.group_by(District.id, District.name).order_by(District.id).all()
-    trainings_q = _training_summary_query(admin, db, start, end).join(Person, Person.id == TrainingAttendance.person_id).filter(
-        or_(Person.person_category == job_title, Person.job_title == job_title)
-    )
+    trainings_q = _training_summary_query(admin, db, start, end).join(Person, Person.id == TrainingAttendance.person_id).filter(person_match)
     trainings = [_summary_item(r) for r in trainings_q.order_by(TrainingSession.start_at.desc()).limit(300).all()]
     return StatsJobTitleSummary(
         job_title=job_title,
@@ -2508,7 +2587,7 @@ def rebind_person_profile(
     _: Annotated[AdminUser, Depends(require_detachment_admin)],
     db: Session = Depends(get_db),
 ):
-    """支队管理员重新绑定人员姓名、手机号、单位与身份/岗位。"""
+    """支队管理员重新绑定人员姓名、手机号、单位与职务岗位。"""
     person = db.get(Person, person_id)
     if not person:
         raise HTTPException(404, "人员不存在")

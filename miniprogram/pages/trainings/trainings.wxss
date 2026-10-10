@@ -1,0 +1,25 @@
+.page {
+  padding: 1rpx 0 32rpx;
+}
+.training-card {
+  margin-top: 24rpx;
+  margin-bottom: 0;
+}
+.training-title {
+  color: #1a237e;
+  font-size: 31rpx;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.training-meta {
+  color: #687385;
+  font-size: 25rpx;
+  line-height: 1.65;
+  margin-top: 10rpx;
+}
+.state {
+  color: #8a94a5;
+  font-size: 27rpx;
+  padding: 96rpx 32rpx;
+  text-align: center;
+}

@@ -38,11 +38,15 @@
   margin-bottom: 8rpx;
 }
 .input,
-.picker {
+.picker,
+.org-selected-value {
+  box-sizing: border-box;
+  height: 84rpx;
   border: 1px solid #e0e0e0;
   border-radius: 12rpx;
-  padding: 20rpx;
+  padding: 0 20rpx;
   font-size: 28rpx;
+  line-height: 84rpx;
 }
 .org-field {
   position: relative;
@@ -51,15 +55,27 @@
   position: relative;
 }
 .org-input-wrap .input {
-  box-sizing: border-box;
   width: 100%;
+}
+.org-selected-value {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  line-height: normal;
+}
+.selected-org-name {
+  color: #222;
+  flex: 1;
+  font-size: 28rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .clear-org {
   color: #1a237e;
   font-size: 24rpx;
-  position: absolute;
-  right: 20rpx;
-  top: 20rpx;
+  flex: 0 0 auto;
+  margin-left: 16rpx;
 }
 .org-suggestions {
   background: #fff;

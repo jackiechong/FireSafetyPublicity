@@ -1,0 +1,14 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state">正在加载培训记录…</view>
+
+  <block wx:elif="{{list.length}}">
+    <view wx:for="{{list}}" wx:key="session_id" class="card training-card">
+      <view class="training-title">{{item.title}}</view>
+      <view class="training-meta">{{item.organization_name}} · {{item.district_name}}</view>
+      <view class="training-meta">{{item.start_at}} · {{item.duration_minutes}} 分钟</view>
+      <view wx:if="{{item.location}}" class="training-meta">地点：{{item.location}}</view>
+    </view>
+  </block>
+
+  <view wx:else class="state">暂无培训记录</view>
+</view>
