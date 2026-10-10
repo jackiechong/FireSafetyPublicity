@@ -10,9 +10,7 @@
         <el-upload :show-file-list="false" accept=".xlsx" :http-request="uploadPersons">
           <el-button type="primary">批量导入人员</el-button>
         </el-upload>
-        <el-upload :show-file-list="false" accept=".xlsx" :http-request="uploadScanTraining">
-          <el-button type="warning">一键导入扫码培训</el-button>
-        </el-upload>
+        <el-button type="warning" @click="openScanTrainingImport">批量导入扫码培训</el-button>
         <el-button type="success" @click="exportSummary">导出统计 Excel</el-button>
       </div>
     </div>
@@ -107,6 +105,18 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="scanTrainingImportVisible" title="批量导入扫码培训" width="560px" destroy-on-close>
+      <el-upload v-model:file-list="scanTrainingFiles" accept=".xlsx" multiple :auto-upload="false">
+        <el-button type="warning">选择 Excel 文件</el-button>
+      </el-upload>
+      <template #footer>
+        <el-button @click="scanTrainingImportVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!scanTrainingFiles.length" :loading="scanTrainingImporting" @click="submitScanTrainingImport">
+          开始导入
+        </el-button>
+      </template>
+    </el-dialog>
+
     <section class="grid">
       <div class="panel">
         <h3>按人员类别</h3>
@@ -173,6 +183,9 @@ const trainingEditSaving = ref(false);
 const editingTraining = ref(null);
 const trainingOrganizationOptions = ref([]);
 const editingOrganizationLoading = ref(false);
+const scanTrainingImportVisible = ref(false);
+const scanTrainingImporting = ref(false);
+const scanTrainingFiles = ref([]);
 const trainingEditForm = reactive({
   title: "",
   topic_id: null,
@@ -339,19 +352,30 @@ async function uploadPersons({ file }) {
   }
 }
 
-async function uploadScanTraining({ file }) {
+function openScanTrainingImport() {
+  scanTrainingFiles.value = [];
+  scanTrainingImportVisible.value = true;
+}
+
+async function submitScanTrainingImport() {
+  if (!scanTrainingFiles.value.length) return;
   const form = new FormData();
-  form.append("file", file);
+  scanTrainingFiles.value.forEach((item) => form.append("files", item.raw));
+  scanTrainingImporting.value = true;
   try {
     const { data } = await http.post("/api/admin/imports/scan-trainings", form);
     if (!data.ok) {
       ElMessage.error((data.errors || []).slice(0, 3).join("；") || "导入失败");
       return;
     }
-    ElMessage.success(`导入完成：新增 ${data.sessions} 场培训、${data.imported} 条签到${data.skipped_duplicates ? `，已跳过 ${data.skipped_duplicates} 条重复记录` : ""}`);
+    ElMessage.success(`已导入 ${data.files} 个文件：新增 ${data.sessions} 场培训、${data.imported} 条签到${data.skipped_duplicates ? `，已跳过 ${data.skipped_duplicates} 条重复记录` : ""}`);
+    scanTrainingImportVisible.value = false;
+    scanTrainingFiles.value = [];
     await loadAll();
   } catch (e) {
     ElMessage.error(e?.response?.data?.detail || "导入失败");
+  } finally {
+    scanTrainingImporting.value = false;
   }
 }
 

@@ -1928,69 +1928,73 @@ def _scan_training_placeholder_org(db: Session, brigade: Brigade, training_org: 
 @router.post("/imports/scan-trainings")
 async def import_scan_trainings(
     admin: Annotated[AdminUser, Depends(get_current_admin)],
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
-    """导入草料等扫码导出的培训签到表，按表单编号自动归并为历史培训场次。"""
-    data = await file.read()
-    try:
-        rows = _read_xlsx_rows(data)
-    except Exception as exc:
-        raise HTTPException(400, f"无法读取 Excel：{exc}")
-    if len(rows) < 2:
-        raise HTTPException(400, "Excel 没有可导入的签到记录")
-
-    header = [x.strip() for x in rows[0]]
+    """批量导入草料等扫码导出的培训签到表，按表单编号自动归并为历史培训场次。"""
+    if not files:
+        raise HTTPException(400, "请选择至少一个 Excel 文件")
     required = ["表单名称", "表单编号", "培训主办单位", "培训时长", "填表时间", "姓名", "手机"]
-    missing = [name for name in required if name not in header]
-    if missing:
-        raise HTTPException(400, f"不是扫码培训导入模板，缺少列：{', '.join(missing)}")
-    idx = {name: header.index(name) for name in header}
-
-    def value(row: list[str], name: str) -> str:
-        pos = idx[name]
-        return row[pos].strip() if pos < len(row) else ""
-
     parsed_rows: list[dict] = []
     errors: list[str] = []
-    for line_no, row in enumerate(rows[1:], start=2):
-        if not any(cell.strip() for cell in row):
-            continue
-        title = value(row, "表单名称")
-        form_no = value(row, "表单编号")
-        organizer = value(row, "培训主办单位")
-        duration_text = value(row, "培训时长")
-        checked_in_at = _parse_scan_training_time(value(row, "填表时间"))
-        name = value(row, "姓名")
-        phone = value(row, "手机")
-        if not all((title, form_no, organizer, duration_text, checked_in_at, name, phone)):
-            errors.append(f"第{line_no}行：培训、签到或人员必填信息不完整")
-            continue
-        if not phone.isdigit() or len(phone) != 11 or not phone.startswith("1"):
-            errors.append(f"第{line_no}行：手机号格式错误")
-            continue
+    for file in files:
+        filename = file.filename or "未命名文件"
         try:
-            duration = int(float(duration_text))
-        except ValueError:
-            duration = 0
-        if duration <= 0:
-            errors.append(f"第{line_no}行：培训时长必须为正整数分钟")
+            rows = _read_xlsx_rows(await file.read())
+        except Exception as exc:
+            errors.append(f"{filename}：无法读取 Excel（{exc}）")
             continue
-        parsed_rows.append(
-            {
-                "line_no": line_no,
-                "title": title[:256],
-                "form_no": form_no[:64],
-                "organizer": organizer,
-                "duration": duration,
-                "checked_in_at": checked_in_at,
-                "name": name[:64],
-                "phone": phone,
-                "unit_job": value(row, "单位/职业")[:64] if "单位/职业" in idx else "",
-            }
-        )
+        if len(rows) < 2:
+            errors.append(f"{filename}：没有可导入的签到记录")
+            continue
+        header = [x.strip() for x in rows[0]]
+        missing = [name for name in required if name not in header]
+        if missing:
+            errors.append(f"{filename}：缺少列 {', '.join(missing)}")
+            continue
+        idx = {name: header.index(name) for name in header}
+
+        def value(row: list[str], name: str) -> str:
+            pos = idx[name]
+            return row[pos].strip() if pos < len(row) else ""
+
+        for line_no, row in enumerate(rows[1:], start=2):
+            if not any(cell.strip() for cell in row):
+                continue
+            title = value(row, "表单名称")
+            form_no = value(row, "表单编号")
+            organizer = value(row, "培训主办单位")
+            duration_text = value(row, "培训时长")
+            checked_in_at = _parse_scan_training_time(value(row, "填表时间"))
+            name = value(row, "姓名")
+            phone = value(row, "手机")
+            if not all((title, form_no, organizer, duration_text, checked_in_at, name, phone)):
+                errors.append(f"{filename} 第{line_no}行：培训、签到或人员必填信息不完整")
+                continue
+            if not phone.isdigit() or len(phone) != 11 or not phone.startswith("1"):
+                errors.append(f"{filename} 第{line_no}行：手机号格式错误")
+                continue
+            try:
+                duration = int(float(duration_text))
+            except ValueError:
+                duration = 0
+            if duration <= 0:
+                errors.append(f"{filename} 第{line_no}行：培训时长必须为正整数分钟")
+                continue
+            parsed_rows.append(
+                {
+                    "title": title[:256],
+                    "form_no": form_no[:64],
+                    "organizer": organizer,
+                    "duration": duration,
+                    "checked_in_at": checked_in_at,
+                    "name": name[:64],
+                    "phone": phone,
+                    "unit_job": value(row, "单位/职业")[:64] if "单位/职业" in idx else "",
+                }
+            )
     if errors:
-        return {"ok": False, "sessions": 0, "imported": 0, "skipped_duplicates": 0, "errors": errors[:50]}
+        return {"ok": False, "files": len(files), "sessions": 0, "imported": 0, "skipped_duplicates": 0, "errors": errors[:50]}
     if not parsed_rows:
         raise HTTPException(400, "Excel 没有可导入的签到记录")
 
@@ -2092,9 +2096,9 @@ async def import_scan_trainings(
 
     if errors:
         db.rollback()
-        return {"ok": False, "sessions": 0, "imported": 0, "skipped_duplicates": 0, "errors": errors[:50]}
+        return {"ok": False, "files": len(files), "sessions": 0, "imported": 0, "skipped_duplicates": 0, "errors": errors[:50]}
     db.commit()
-    return {"ok": True, "sessions": sessions_created, "imported": imported, "skipped_duplicates": skipped_duplicates, "errors": []}
+    return {"ok": True, "files": len(files), "sessions": sessions_created, "imported": imported, "skipped_duplicates": skipped_duplicates, "errors": []}
 
 
 @router.get("/imports/organization-template.xlsx")
