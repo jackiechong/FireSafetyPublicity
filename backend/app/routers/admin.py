@@ -297,6 +297,13 @@ def _read_xlsx_rows(data: bytes) -> list[list[str]]:
     for row in root.findall(".//x:row", ns):
         values: list[str] = []
         for cell in row.findall("x:c", ns):
+            ref = cell.attrib.get("r", "")
+            col_name = "".join(ch for ch in ref if ch.isalpha())
+            col_index = 0
+            for char in col_name:
+                col_index = col_index * 26 + ord(char.upper()) - ord("A") + 1
+            while col_index and len(values) < col_index - 1:
+                values.append("")
             ctype = cell.attrib.get("t")
             if ctype == "inlineStr":
                 values.append("".join(t.text or "" for t in cell.findall(".//x:t", ns)).strip())
@@ -1880,6 +1887,214 @@ async def import_persons(
         return {"ok": False, "imported": 0, "updated": 0, "errors": errors[:50]}
     db.commit()
     return {"ok": True, "imported": imported, "updated": updated, "errors": []}
+
+
+def _parse_scan_training_time(value: str) -> Optional[datetime]:
+    text = value.strip().replace("/", "-")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _scan_training_placeholder_org(db: Session, brigade: Brigade, training_org: Organization) -> Organization:
+    """为未能从扫码表识别出单位的外部参训人员保留可后续修正的归属。"""
+    name = "外部培训待完善单位"
+    org = (
+        db.query(Organization)
+        .filter(
+            Organization.name == name,
+            Organization.brigade_id == brigade.id,
+            Organization.district_id == training_org.district_id,
+        )
+        .first()
+    )
+    if org:
+        return org
+    org = Organization(
+        name=name,
+        org_type=OrgType.other_department,
+        brigade_id=brigade.id,
+        district_id=training_org.district_id,
+        remark="EXTERNAL_SCAN_IMPORT_PLACEHOLDER",
+    )
+    db.add(org)
+    db.flush()
+    return org
+
+
+@router.post("/imports/scan-trainings")
+async def import_scan_trainings(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """导入草料等扫码导出的培训签到表，按表单编号自动归并为历史培训场次。"""
+    data = await file.read()
+    try:
+        rows = _read_xlsx_rows(data)
+    except Exception as exc:
+        raise HTTPException(400, f"无法读取 Excel：{exc}")
+    if len(rows) < 2:
+        raise HTTPException(400, "Excel 没有可导入的签到记录")
+
+    header = [x.strip() for x in rows[0]]
+    required = ["表单名称", "表单编号", "培训主办单位", "培训时长", "填表时间", "姓名", "手机"]
+    missing = [name for name in required if name not in header]
+    if missing:
+        raise HTTPException(400, f"不是扫码培训导入模板，缺少列：{', '.join(missing)}")
+    idx = {name: header.index(name) for name in header}
+
+    def value(row: list[str], name: str) -> str:
+        pos = idx[name]
+        return row[pos].strip() if pos < len(row) else ""
+
+    parsed_rows: list[dict] = []
+    errors: list[str] = []
+    for line_no, row in enumerate(rows[1:], start=2):
+        if not any(cell.strip() for cell in row):
+            continue
+        title = value(row, "表单名称")
+        form_no = value(row, "表单编号")
+        organizer = value(row, "培训主办单位")
+        duration_text = value(row, "培训时长")
+        checked_in_at = _parse_scan_training_time(value(row, "填表时间"))
+        name = value(row, "姓名")
+        phone = value(row, "手机")
+        if not all((title, form_no, organizer, duration_text, checked_in_at, name, phone)):
+            errors.append(f"第{line_no}行：培训、签到或人员必填信息不完整")
+            continue
+        if not phone.isdigit() or len(phone) != 11 or not phone.startswith("1"):
+            errors.append(f"第{line_no}行：手机号格式错误")
+            continue
+        try:
+            duration = int(float(duration_text))
+        except ValueError:
+            duration = 0
+        if duration <= 0:
+            errors.append(f"第{line_no}行：培训时长必须为正整数分钟")
+            continue
+        parsed_rows.append(
+            {
+                "line_no": line_no,
+                "title": title[:256],
+                "form_no": form_no[:64],
+                "organizer": organizer,
+                "duration": duration,
+                "checked_in_at": checked_in_at,
+                "name": name[:64],
+                "phone": phone,
+                "unit_job": value(row, "单位/职业")[:64] if "单位/职业" in idx else "",
+            }
+        )
+    if errors:
+        return {"ok": False, "sessions": 0, "imported": 0, "skipped_duplicates": 0, "errors": errors[:50]}
+    if not parsed_rows:
+        raise HTTPException(400, "Excel 没有可导入的签到记录")
+
+    brigade_by_name = {b.name: b for b in db.query(Brigade).all()}
+    grouped: dict[tuple[str, str, str, int], list[dict]] = {}
+    for row in parsed_rows:
+        key = (row["form_no"], row["title"], row["organizer"], row["duration"])
+        grouped.setdefault(key, []).append(row)
+
+    sessions_created = 0
+    imported = 0
+    skipped_duplicates = 0
+    people_by_phone = {
+        p.phone: p
+        for p in db.query(Person).filter(Person.phone.in_({row["phone"] for row in parsed_rows})).all()
+        if p.phone
+    }
+
+    for (_, title, organizer_name, duration), session_rows in grouped.items():
+        brigade = brigade_by_name.get(organizer_name)
+        if not brigade:
+            errors.append(f"培训“{title}”：主办单位“{organizer_name}”未在系统大队名单中找到")
+            continue
+        if admin.role == AdminRole.brigade and brigade.id != admin.brigade_id:
+            errors.append(f"培训“{title}”：无权导入其他大队主办的培训")
+            continue
+        training_org = _default_training_organization(db, brigade.id)
+        if not training_org:
+            errors.append(f"培训“{title}”：未找到主办大队对应的系统单位")
+            continue
+        start_at = min(row["checked_in_at"] for row in session_rows)
+        session = (
+            db.query(TrainingSession)
+            .filter(
+                TrainingSession.title == title,
+                TrainingSession.brigade_id == brigade.id,
+                TrainingSession.start_at == start_at,
+                TrainingSession.duration_minutes == duration,
+            )
+            .first()
+        )
+        if not session:
+            session = TrainingSession(
+                title=title,
+                brigade_id=brigade.id,
+                organization_id=training_org.id,
+                start_at=start_at,
+                end_at=start_at + timedelta(minutes=duration),
+                duration_minutes=duration,
+                is_active=False,
+                remark="由外部扫码培训表导入",
+            )
+            db.add(session)
+            db.flush()
+            sessions_created += 1
+        placeholder_org = _scan_training_placeholder_org(db, brigade, training_org)
+        seen_phones: set[str] = set()
+        for row in sorted(session_rows, key=lambda item: item["checked_in_at"]):
+            phone = row["phone"]
+            if phone in seen_phones:
+                skipped_duplicates += 1
+                continue
+            seen_phones.add(phone)
+            person = people_by_phone.get(phone)
+            if not person:
+                person = Person(
+                    openid=f"imported_scan_{phone}",
+                    name=row["name"],
+                    phone=phone,
+                    district_id=placeholder_org.district_id,
+                    organization_id=placeholder_org.id,
+                    job_title=row["unit_job"] or None,
+                    person_category="外部导入人员",
+                )
+                db.add(person)
+                db.flush()
+                people_by_phone[phone] = person
+            elif not person.job_title and row["unit_job"]:
+                person.job_title = row["unit_job"]
+
+            attendance = (
+                db.query(TrainingAttendance)
+                .filter(TrainingAttendance.session_id == session.id, TrainingAttendance.person_id == person.id)
+                .first()
+            )
+            if attendance:
+                skipped_duplicates += 1
+                continue
+            db.add(
+                TrainingAttendance(
+                    session_id=session.id,
+                    person_id=person.id,
+                    organization_id=person.organization_id or placeholder_org.id,
+                    duration_minutes=duration,
+                    checked_in_at=row["checked_in_at"],
+                )
+            )
+            imported += 1
+
+    if errors:
+        db.rollback()
+        return {"ok": False, "sessions": 0, "imported": 0, "skipped_duplicates": 0, "errors": errors[:50]}
+    db.commit()
+    return {"ok": True, "sessions": sessions_created, "imported": imported, "skipped_duplicates": skipped_duplicates, "errors": []}
 
 
 @router.get("/imports/organization-template.xlsx")

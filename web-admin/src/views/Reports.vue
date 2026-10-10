@@ -10,6 +10,9 @@
         <el-upload :show-file-list="false" accept=".xlsx" :http-request="uploadPersons">
           <el-button type="primary">批量导入人员</el-button>
         </el-upload>
+        <el-upload :show-file-list="false" accept=".xlsx" :http-request="uploadScanTraining">
+          <el-button type="warning">一键导入扫码培训</el-button>
+        </el-upload>
         <el-button type="success" @click="exportSummary">导出统计 Excel</el-button>
       </div>
     </div>
@@ -333,6 +336,22 @@ async function uploadPersons({ file }) {
     ElMessage.success(`导入完成，新增 ${data.imported} 人，更新 ${data.updated} 人`);
   } else {
     ElMessage.error((data.errors || []).slice(0, 5).join("；") || "导入失败");
+  }
+}
+
+async function uploadScanTraining({ file }) {
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const { data } = await http.post("/api/admin/imports/scan-trainings", form);
+    if (!data.ok) {
+      ElMessage.error((data.errors || []).slice(0, 3).join("；") || "导入失败");
+      return;
+    }
+    ElMessage.success(`导入完成：新增 ${data.sessions} 场培训、${data.imported} 条签到${data.skipped_duplicates ? `，已跳过 ${data.skipped_duplicates} 条重复记录` : ""}`);
+    await loadAll();
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || "导入失败");
   }
 }
 
