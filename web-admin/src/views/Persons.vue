@@ -14,8 +14,8 @@
         clearable
         placeholder="搜索姓名、手机号、单位"
         class="search"
-        @keyup.enter="load"
-        @clear="load"
+        @keyup.enter="load(true)"
+        @clear="load(true)"
       />
       <el-select v-model="filterDistrictId" clearable placeholder="区县" class="filter" @change="onFilterDistrictChange">
         <el-option v-for="d in districtFilterOptions" :key="d.id" :label="d.name" :value="d.id" />
@@ -27,11 +27,11 @@
         placeholder="单位"
         class="filter-org"
         :disabled="!filterDistrictId"
-        @change="load"
+        @change="load(true)"
       >
         <el-option v-for="o in filterOrgs" :key="o.id" :label="o.name" :value="o.id" />
       </el-select>
-      <el-button type="primary" @click="load">查询</el-button>
+      <el-button type="primary" @click="load(true)">查询</el-button>
     </div>
 
     <el-table :data="rows" border stripe v-loading="loading" style="width: 100%">
@@ -66,6 +66,17 @@
         </template>
       </el-table-column>
     </el-table>
+    <div class="pagination">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        @current-change="changePage"
+        @size-change="changePageSize"
+      />
+    </div>
 
     <el-dialog v-model="editVisible" title="编辑人员信息" width="560px" destroy-on-close>
       <el-form :model="form" label-width="96px">
@@ -145,6 +156,9 @@ const trainingVisible = ref(false);
 const trainingLoading = ref(false);
 const trainingRows = ref([]);
 const trainingPersonName = ref("");
+const page = ref(1);
+const pageSize = ref(20);
+const total = ref(0);
 
 const form = reactive({
   name: "",
@@ -181,7 +195,7 @@ async function loadOrgs(districtId) {
 async function onFilterDistrictChange() {
   filterOrganizationId.value = undefined;
   filterOrgs.value = filterDistrictId.value ? await loadOrgs(filterDistrictId.value) : [];
-  await load();
+  await load(true);
 }
 
 async function onEditDistrictChange() {
@@ -189,20 +203,34 @@ async function onEditDistrictChange() {
   editOrgs.value = form.district_id ? await loadOrgs(form.district_id) : [];
 }
 
-async function load() {
+async function load(resetPage = false) {
+  if (resetPage) page.value = 1;
   loading.value = true;
   try {
     const params = {};
     if (keyword.value.trim()) params.q = keyword.value.trim();
     if (filterDistrictId.value && Number(filterDistrictId.value) > 0) params.district_id = Number(filterDistrictId.value);
     if (filterOrganizationId.value) params.organization_id = Number(filterOrganizationId.value);
-    const { data } = await http.get("/api/admin/persons", { params });
-    rows.value = data || [];
+    params.page = page.value;
+    params.page_size = pageSize.value;
+    const { data } = await http.get("/api/admin/persons/page", { params });
+    rows.value = data.items || [];
+    total.value = data.total || 0;
   } catch (e) {
     ElMessage.error(errorMessage(e, "人员列表加载失败"));
   } finally {
     loading.value = false;
   }
+}
+
+function changePageSize(size) {
+  pageSize.value = size;
+  load(true);
+}
+
+function changePage(nextPage) {
+  page.value = nextPage;
+  load();
 }
 
 async function openEdit(row) {
@@ -349,6 +377,11 @@ h2 {
   margin-top: 4px;
   font-size: 12px;
   color: #888;
+}
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 .form-tip {
   margin-top: 6px;

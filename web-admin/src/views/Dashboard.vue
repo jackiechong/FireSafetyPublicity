@@ -49,10 +49,10 @@
     <section class="main-grid">
       <div class="panel span-2">
         <div class="panel-head">
-          <h2>区县培训时长排行</h2>
-          <span>按当前周期累计学时</span>
+          <h2>主办单位培训时长排行</h2>
+          <span>按当前周期累计学时与场次</span>
         </div>
-        <div ref="districtChartRef" class="chart large" />
+        <div ref="brigadeChartRef" class="chart large" />
       </div>
 
       <div class="panel">
@@ -147,6 +147,7 @@ const periodMode = ref("year");
 const periodValue = ref(String(new Date().getFullYear()));
 const currentAdmin = ref(null);
 const districtStats = ref([]);
+const brigadeStats = ref([]);
 const topicStats = ref([]);
 const trainings = ref([]);
 const persons = ref([]);
@@ -154,9 +155,9 @@ const orgs = ref([]);
 const jobTitleRanks = ref([]);
 const orgRanks = ref([]);
 
-const districtChartRef = ref(null);
+const brigadeChartRef = ref(null);
 const topicChartRef = ref(null);
-let districtChart;
+let brigadeChart;
 let topicChart;
 
 const scopeText = computed(() => (currentAdmin.value?.role === "detachment" ? "葫芦岛支队" : "本大队"));
@@ -164,8 +165,8 @@ const periodLabel = computed(() => {
   const raw = String(periodValue.value || "");
   return periodMode.value === "year" ? `${raw} 年度` : `${raw.replace("-", " 年 ")} 月`;
 });
-const totalMinutes = computed(() => districtStats.value.reduce((s, x) => s + Number(x.total_minutes || 0), 0));
-const totalSessions = computed(() => districtStats.value.reduce((s, x) => s + Number(x.session_count || 0), 0));
+const totalMinutes = computed(() => brigadeStats.value.reduce((s, x) => s + Number(x.total_minutes || 0), 0));
+const totalSessions = computed(() => brigadeStats.value.reduce((s, x) => s + Number(x.session_count || 0), 0));
 const personTotal = computed(() => persons.value.length);
 const orgTotal = computed(() => orgs.value.length);
 const attendanceTotal = computed(() => trainings.value.reduce((s, x) => s + Number(x.person_count || 0), 0));
@@ -239,8 +240,9 @@ function inRange(iso, range) {
 
 async function loadAll() {
   const params = periodParams();
-  const [me, districts, topics, summary, people, organizations, jobs] = await Promise.all([
+  const [me, brigades, districts, topics, summary, people, organizations, jobs] = await Promise.all([
     http.get("/api/admin/me"),
+    http.get("/api/admin/stats/by-brigade", { params }),
     http.get("/api/admin/stats/by-district", { params }),
     http.get("/api/admin/stats/by-topic", { params }),
     http.get("/api/admin/stats/training-summary", { params }),
@@ -249,6 +251,7 @@ async function loadAll() {
     http.get("/api/admin/job-titles"),
   ]);
   currentAdmin.value = me.data;
+  brigadeStats.value = brigades.data || [];
   districtStats.value = districts.data || [];
   topicStats.value = topics.data || [];
   trainings.value = summary.data || [];
@@ -292,20 +295,52 @@ async function loadOrgRanks() {
 
 async function renderCharts() {
   await nextTick();
-  renderDistrictChart();
+  renderBrigadeChart();
   renderTopicChart();
 }
 
-function renderDistrictChart() {
-  if (!districtChartRef.value) return;
-  if (!districtChart) districtChart = echarts.init(districtChartRef.value);
-  const list = [...districtStats.value].sort((a, b) => Number(b.total_minutes || 0) - Number(a.total_minutes || 0));
-  districtChart.setOption({
-    grid: { left: 56, right: 24, top: 24, bottom: 54 },
-    tooltip: { trigger: "axis", formatter: (items) => `${items[0].name}<br/>${formatTrainingHours(items[0].value)}` },
-    xAxis: { type: "category", data: list.map((x) => x.district_name), axisLabel: { interval: 0, rotate: 25 } },
-    yAxis: { type: "value", axisLabel: { formatter: (v) => (Number(v) / 60).toFixed(0) } },
-    series: [{ type: "bar", data: list.map((x) => x.total_minutes), barMaxWidth: 34, itemStyle: { color: "#2563eb" } }],
+function renderBrigadeChart() {
+  if (!brigadeChartRef.value) return;
+  if (!brigadeChart) brigadeChart = echarts.init(brigadeChartRef.value);
+  const list = [...brigadeStats.value]
+    .filter((item) => !["杨家杖子经济开发区大队", "高新技术开发区大队"].includes(item.brigade_name))
+    .sort((a, b) => Number(a.total_minutes || 0) - Number(b.total_minutes || 0));
+  brigadeChart.setOption({
+    grid: { left: 146, right: 92, top: 14, bottom: 14, containLabel: false },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      formatter: (items) => {
+        const item = items[0];
+        const row = list[item.dataIndex];
+        return `${row.brigade_name}<br/>培训时长：${formatTrainingHours(row.total_minutes)}<br/>培训场次：${row.session_count} 场<br/>参训人数：${row.person_count} 人`;
+      },
+    },
+    xAxis: {
+      type: "value",
+      splitLine: { lineStyle: { color: "#e8edf5" } },
+      axisLabel: { color: "#7b8794", formatter: (value) => `${(Number(value) / 60).toFixed(0)}h` },
+    },
+    yAxis: {
+      type: "category",
+      data: list.map((item) => item.brigade_name),
+      axisTick: { show: false },
+      axisLine: { show: false },
+      axisLabel: { color: "#344054", fontSize: 13, width: 130, overflow: "truncate" },
+    },
+    series: [{
+      type: "bar",
+      data: list.map((item) => ({ value: item.total_minutes, sessionCount: item.session_count })),
+      barWidth: 18,
+      itemStyle: { color: "#1677d2", borderRadius: [0, 5, 5, 0] },
+      label: {
+        show: true,
+        position: "right",
+        color: "#344054",
+        fontSize: 12,
+        formatter: (params) => `${formatTrainingHours(params.value)}  ·  ${params.data.sessionCount}场`,
+      },
+    }],
   }, { notMerge: true });
 }
 
@@ -322,7 +357,7 @@ function renderTopicChart() {
 
 onMounted(loadAll);
 onUnmounted(() => {
-  districtChart?.dispose();
+  brigadeChart?.dispose();
   topicChart?.dispose();
 });
 </script>

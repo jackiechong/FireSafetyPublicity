@@ -7,10 +7,10 @@
         clearable
         placeholder="搜索会议名称"
         style="width: 280px"
-        @keyup.enter="load"
-        @clear="load"
+        @keyup.enter="load(true)"
+        @clear="load(true)"
       />
-      <el-button type="primary" @click="load">搜索会议</el-button>
+      <el-button type="primary" @click="load(true)">搜索会议</el-button>
       <el-button type="primary" @click="openCreate">登记培训</el-button>
     </div>
 
@@ -45,6 +45,17 @@
         </template>
       </el-table-column>
     </el-table>
+    <div class="pagination">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        @current-change="changePage"
+        @size-change="changePageSize"
+      />
+    </div>
 
     <el-dialog v-model="createVisible" title="登记培训" width="560px" destroy-on-close>
       <el-form :model="createForm" label-width="120px">
@@ -209,6 +220,9 @@ const attListVisible = ref(false);
 const attListLoading = ref(false);
 const attListRows = ref([]);
 const attListSession = ref(null);
+const page = ref(1);
+const pageSize = ref(20);
+const total = ref(0);
 
 function brigadeName(id) {
   return brigades.value.find((b) => b.id === id)?.name || id;
@@ -223,16 +237,30 @@ function formatTime(iso) {
   return iso.replace("T", " ").slice(0, 19);
 }
 
-async function load() {
+async function load(resetPage = false) {
+  if (resetPage) page.value = 1;
   loading.value = true;
   try {
     const params = {};
     if (searchQ.value.trim()) params.q = searchQ.value.trim();
-    const { data } = await http.get("/api/admin/trainings", { params });
-    rows.value = data;
+    params.page = page.value;
+    params.page_size = pageSize.value;
+    const { data } = await http.get("/api/admin/trainings/page", { params });
+    rows.value = data.items || [];
+    total.value = data.total || 0;
   } finally {
     loading.value = false;
   }
+}
+
+function changePageSize(size) {
+  pageSize.value = size;
+  load(true);
+}
+
+function changePage(nextPage) {
+  page.value = nextPage;
+  load();
 }
 
 function openCreate() {
@@ -410,5 +438,10 @@ h2 {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 </style>

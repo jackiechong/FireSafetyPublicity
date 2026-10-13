@@ -26,7 +26,7 @@
       <el-select v-model="orgId" filterable remote clearable reserve-keyword placeholder="输入单位名称" :remote-method="remoteOrg" :loading="orgLoading" style="width: 260px">
         <el-option v-for="o in orgOptions" :key="o.id" :label="`${o.name}（${o.district_name}）`" :value="o.id" />
       </el-select>
-      <el-button type="primary" @click="loadAll">查询</el-button>
+      <el-button type="primary" @click="loadAll(true)">查询</el-button>
     </section>
 
     <section class="panel">
@@ -50,6 +50,17 @@
           </template>
         </el-table-column>
       </el-table>
+      <div class="pagination">
+        <el-pagination
+          v-model:current-page="summaryPage"
+          v-model:page-size="summaryPageSize"
+          :total="summaryTotal"
+          :page-sizes="[20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @current-change="changeSummaryPage"
+          @size-change="changeSummaryPageSize"
+        />
+      </div>
     </section>
 
     <el-dialog v-model="trainingEditVisible" title="编辑培训" width="560px" destroy-on-close>
@@ -174,6 +185,9 @@ const orgId = ref();
 const orgOptions = ref([]);
 const orgLoading = ref(false);
 const summary = ref([]);
+const summaryPage = ref(1);
+const summaryPageSize = ref(20);
+const summaryTotal = ref(0);
 const jobStats = ref(null);
 const topicStats = ref([]);
 const completion = ref([]);
@@ -291,11 +305,14 @@ async function saveTrainingEdit() {
   }
 }
 
-async function loadAll() {
+async function loadAll(resetPage = false) {
+  if (resetPage) summaryPage.value = 1;
   loading.value = true;
   try {
     const calls = [
-      http.get("/api/admin/stats/training-summary", { params: params() }),
+      http.get("/api/admin/stats/training-summary/page", {
+        params: params({ page: summaryPage.value, page_size: summaryPageSize.value }),
+      }),
       http.get("/api/admin/stats/by-topic", { params: params(topicId.value ? { topic_id: topicId.value } : {}) }),
     ];
     if (jobTitle.value) calls.push(http.get("/api/admin/stats/by-job-title", { params: params({ job_title: jobTitle.value }) }));
@@ -303,13 +320,24 @@ async function loadAll() {
     if (orgId.value) calls.push(http.get("/api/admin/stats/org-completion", { params: params({ organization_id: orgId.value }) }));
     else calls.push(Promise.resolve({ data: [] }));
     const [s, t, j, c] = await Promise.all(calls);
-    summary.value = s.data || [];
+    summary.value = s.data.items || [];
+    summaryTotal.value = s.data.total || 0;
     topicStats.value = t.data || [];
     jobStats.value = j.data;
     completion.value = c.data || [];
   } finally {
     loading.value = false;
   }
+}
+
+function changeSummaryPage(nextPage) {
+  summaryPage.value = nextPage;
+  loadAll();
+}
+
+function changeSummaryPageSize(size) {
+  summaryPageSize.value = size;
+  loadAll(true);
 }
 
 async function downloadTemplate() {
@@ -425,6 +453,11 @@ p {
 h3 {
   font-size: 1rem;
   margin: 0 0 10px;
+}
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 .metric {
   color: #1a237e;

@@ -3,7 +3,7 @@
     <h2>单位录入</h2>
     <el-form :inline="true" class="toolbar">
       <el-form-item label="关键词">
-        <el-input v-model="keyword" placeholder="名称检索" clearable style="width: 200px" @keyup.enter="load" />
+        <el-input v-model="keyword" placeholder="名称检索" clearable style="width: 200px" @keyup.enter="load(true)" @clear="load(true)" />
       </el-form-item>
       <el-form-item label="区县">
         <el-select v-model="filterDistrict" clearable placeholder="全部" style="width: 140px">
@@ -11,7 +11,7 @@
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" @click="load">查询</el-button>
+        <el-button type="primary" @click="load(true)">查询</el-button>
         <el-button @click="openDialog()">新增单位</el-button>
         <el-button @click="downloadTemplate">下载导入模板</el-button>
         <el-upload :show-file-list="false" accept=".xlsx" :http-request="uploadOrganizations">
@@ -43,6 +43,17 @@
         </template>
       </el-table-column>
     </el-table>
+    <div class="pagination">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-sizes="[20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        @current-change="changePage"
+        @size-change="changePageSize"
+      />
+    </div>
 
     <el-dialog v-model="dialogVisible" :title="editing?.id ? '编辑单位' : '新增单位'" width="520px" destroy-on-close>
       <el-form :model="form" label-width="100px">
@@ -98,6 +109,9 @@ const dialogVisible = ref(false);
 const editing = ref(null);
 const orgTypes = ref([]);
 const currentAdmin = ref(null);
+const page = ref(1);
+const pageSize = ref(20);
+const total = ref(0);
 
 const form = reactive({
   name: "",
@@ -158,19 +172,33 @@ async function uploadOrganizations({ file }) {
   }
 }
 
-async function load() {
+async function load(resetPage = false) {
+  if (resetPage) page.value = 1;
   loading.value = true;
   try {
-    const { data } = await http.get("/api/admin/organizations", {
+    const { data } = await http.get("/api/admin/organizations/page", {
       params: {
         q: keyword.value || undefined,
         district_id: filterDistrict.value || undefined,
+        page: page.value,
+        page_size: pageSize.value,
       },
     });
-    rows.value = data;
+    rows.value = data.items || [];
+    total.value = data.total || 0;
   } finally {
     loading.value = false;
   }
+}
+
+function changePageSize(size) {
+  pageSize.value = size;
+  load(true);
+}
+
+function changePage(nextPage) {
+  page.value = nextPage;
+  load();
 }
 
 function openDialog(row) {
@@ -248,5 +276,10 @@ onMounted(async () => {
 h2 {
   margin: 0 0 16px;
   font-size: 1.25rem;
+}
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 </style>

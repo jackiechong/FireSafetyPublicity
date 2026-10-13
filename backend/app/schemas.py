@@ -1,9 +1,19 @@
 from datetime import datetime
-from typing import Optional
+from typing import Generic, Optional, TypeVar
 
 from pydantic import BaseModel, Field
 
 from app.models import AdminRole, OrgType
+
+
+T = TypeVar("T")
+
+
+class PageResult(BaseModel, Generic[T]):
+    items: list[T]
+    total: int
+    page: int
+    page_size: int
 
 
 class Token(BaseModel):

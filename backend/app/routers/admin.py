@@ -62,6 +62,7 @@ from app.schemas import (
     OrganizationUpdate,
     OrgTypeOptionCreate,
     OrgTypeOptionUpdate,
+    PageResult,
     QuickTrainingCreate,
     QuickTrainingOut,
     StatsBrigadeItem,
@@ -105,6 +106,7 @@ ORG_TYPE_LABELS = {
 }
 
 DETACHMENT_BRIGADE_CODE = "HLDZD"
+RETIRED_BRIGADE_CODES = ("YJJKQ", "GXJSQ")
 UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_EXTENSIONS = {
     ".jpg",
@@ -806,6 +808,30 @@ def list_organizations(
     return query.order_by(Organization.id.desc()).all()
 
 
+@router.get("/organizations/page", response_model=PageResult[OrganizationOut])
+def list_organizations_page(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    brigade_id: Optional[int] = None,
+    district_id: Optional[int] = None,
+    q: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=10, le=100),
+):
+    query = _org_query(admin, db)
+    if brigade_id is not None:
+        if brigade_filter_brigade_id(admin) is not None and brigade_id != brigade_filter_brigade_id(admin):
+            raise HTTPException(403, "无权查看该大队")
+        query = query.filter(Organization.brigade_id == brigade_id)
+    if district_id is not None:
+        query = query.filter(Organization.district_id == district_id)
+    if q and q.strip():
+        query = query.filter(Organization.name.like(f"%{q.strip()}%"))
+    total = query.count()
+    items = query.order_by(Organization.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return PageResult(items=items, total=total, page=page, page_size=page_size)
+
+
 @router.get("/organizations/suggest", response_model=List[SuggestItem])
 def suggest_organizations(
     admin: Annotated[AdminUser, Depends(get_current_admin)],
@@ -906,6 +932,32 @@ def list_trainings(
         like = f"%{q.strip()}%"
         query = query.filter(TrainingSession.title.like(like))
     return query.order_by(TrainingSession.start_at.desc()).limit(500).all()
+
+
+@router.get("/trainings/page", response_model=PageResult[TrainingSessionOut])
+def list_trainings_page(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    brigade_id: Optional[int] = None,
+    organization_id: Optional[int] = None,
+    q: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=10, le=100),
+):
+    deactivate_expired_sessions(db)
+    query = db.query(TrainingSession)
+    bid = brigade_filter_brigade_id(admin)
+    if bid is not None:
+        query = query.filter(TrainingSession.brigade_id == bid)
+    elif brigade_id is not None:
+        query = query.filter(TrainingSession.brigade_id == brigade_id)
+    if organization_id is not None:
+        query = query.filter(TrainingSession.organization_id == organization_id)
+    if q and q.strip():
+        query = query.filter(TrainingSession.title.like(f"%{q.strip()}%"))
+    total = query.count()
+    items = query.order_by(TrainingSession.start_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return PageResult(items=items, total=total, page=page, page_size=page_size)
 
 
 def _default_training_organization(db: Session, brigade_id: Optional[int]) -> Optional[Organization]:
@@ -1313,7 +1365,7 @@ def stats_by_brigade(
         totals.c.total_minutes,
         totals.c.session_count,
         totals.c.person_count,
-    )
+    ).filter(~Brigade.code.in_(RETIRED_BRIGADE_CODES))
     if bid is not None:
         brigades = brigades.filter(Brigade.id == bid)
     rows = (
@@ -1680,6 +1732,34 @@ def stats_training_summary(
         )
     rows = q.order_by(TrainingSession.start_at.desc()).limit(1000).all()
     return [_summary_item(r) for r in rows]
+
+
+@router.get("/stats/training-summary/page", response_model=PageResult[StatsTrainingSummaryItem])
+def stats_training_summary_page(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    topic_id: Optional[int] = None,
+    job_title: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=10, le=100),
+):
+    q = _training_summary_query(admin, db, start, end)
+    if topic_id is not None:
+        q = q.filter(TrainingSession.topic_id == topic_id)
+    if job_title:
+        q = q.join(Person, Person.id == TrainingAttendance.person_id).filter(
+            or_(Person.person_category == job_title, Person.job_title == job_title)
+        )
+    total = q.count()
+    rows = q.order_by(TrainingSession.start_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return PageResult(
+        items=[_summary_item(row) for row in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/stats/trainings-by-district", response_model=List[StatsTrainingSummaryItem])
@@ -2486,6 +2566,41 @@ def list_persons(
         query = query.filter(or_(Person.name.like(like), Person.phone.like(like), Organization.name.like(like)))
     rows = query.order_by(Person.updated_at.desc(), Person.id.desc()).limit(500).all()
     return [_person_out(p, db) for p in rows]
+
+
+@router.get("/persons/page", response_model=PageResult[AdminPersonOut])
+def list_persons_page(
+    admin: Annotated[AdminUser, Depends(get_current_admin)],
+    db: Session = Depends(get_db),
+    q: Optional[str] = Query(None, description="姓名、手机号、单位关键词"),
+    district_id: Optional[int] = Query(None),
+    organization_id: Optional[int] = Query(None),
+    person_category: Optional[str] = Query(None, description="人员类别"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=10, le=100),
+):
+    query = db.query(Person).outerjoin(Organization, Person.organization_id == Organization.id)
+    query = query.filter(Person.name.isnot(None), Person.phone.isnot(None), Person.organization_id.isnot(None))
+    bid = brigade_filter_brigade_id(admin)
+    if bid is not None:
+        query = query.filter(Organization.brigade_id == bid)
+    if district_id is not None:
+        query = query.filter(Person.district_id == district_id)
+    if organization_id is not None:
+        query = query.filter(Person.organization_id == organization_id)
+    if person_category and person_category.strip():
+        query = query.filter(Person.person_category == person_category.strip())
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        query = query.filter(or_(Person.name.like(like), Person.phone.like(like), Organization.name.like(like)))
+    total = query.count()
+    people = query.order_by(Person.updated_at.desc(), Person.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return PageResult(
+        items=[_person_out(person, db) for person in people],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 def _sync_person_admin(person: Person, org: Organization, is_admin: bool, db: Session) -> None:
