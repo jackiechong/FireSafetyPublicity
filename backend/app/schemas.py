@@ -243,6 +243,7 @@ class TrainingSessionPatch(BaseModel):
     is_active: Optional[bool] = None
     title: Optional[str] = Field(default=None, min_length=1, max_length=256)
     topic_id: Optional[int] = None
+    brigade_id: Optional[int] = Field(default=None, ge=1)
     organization_id: Optional[int] = Field(default=None, ge=1)
     start_at: Optional[datetime] = None
     end_at: Optional[datetime] = None

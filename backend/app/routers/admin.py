@@ -980,15 +980,31 @@ def patch_training(
         TrainingTopicOption.is_active.is_(True),
     ).first():
         raise HTTPException(400, "培训主题不存在或已停用")
+    target_brigade_id = data.get("brigade_id")
+    if target_brigade_id is not None:
+        target_brigade = db.get(Brigade, target_brigade_id)
+        if not target_brigade:
+            raise HTTPException(400, "所选培训主办单位不存在")
+        if admin.role == AdminRole.brigade and target_brigade_id != admin.brigade_id:
+            raise HTTPException(403, "只能修改为本大队主办的培训")
+
     if "organization_id" in data:
         org = db.get(Organization, data["organization_id"])
         if not org:
             raise HTTPException(400, "所选单位不存在")
         if admin.role == AdminRole.brigade and org.brigade_id != admin.brigade_id:
             raise HTTPException(403, "只能修改为本大队所属单位")
+        if target_brigade_id is not None and org.brigade_id != target_brigade_id:
+            raise HTTPException(400, "培训主办单位与所选单位不匹配")
         # 培训主办单位变更后，培训归属大队也需随单位同步，避免权限与统计口径不一致。
         sess.organization_id = org.id
         sess.brigade_id = org.brigade_id
+    elif target_brigade_id is not None:
+        org = _default_training_organization(db, target_brigade_id)
+        if not org:
+            raise HTTPException(400, "未找到培训主办单位对应的系统单位")
+        sess.organization_id = org.id
+        sess.brigade_id = target_brigade_id
     if "is_active" in data:
         sess.is_active = bool(data["is_active"])
         if not sess.is_active:
@@ -2505,6 +2521,27 @@ def _sync_person_admin(person: Person, org: Organization, is_admin: bool, db: Se
     db.add(AdminWxBinding(admin_user_id=admin.id, wx_openid=person.openid, person_id=person.id, bound_at=datetime.utcnow()))
 
 
+def _sync_external_placeholder_attendances(
+    person: Person,
+    previous_org: Optional[Organization],
+    target_org: Organization,
+    db: Session,
+) -> None:
+    """人员补全正式单位后，同步修正外部扫码导入产生的待完善签到单位。"""
+    if not previous_org or previous_org.id == target_org.id:
+        return
+    is_placeholder = (
+        previous_org.remark == "EXTERNAL_SCAN_IMPORT_PLACEHOLDER"
+        or previous_org.name == "外部培训待完善单位"
+    )
+    if not is_placeholder:
+        return
+    db.query(TrainingAttendance).filter(
+        TrainingAttendance.person_id == person.id,
+        TrainingAttendance.organization_id == previous_org.id,
+    ).update({"organization_id": target_org.id}, synchronize_session=False)
+
+
 @router.patch("/persons/{person_id}", response_model=AdminPersonOut)
 def manage_person_profile(
     person_id: int,
@@ -2520,9 +2557,9 @@ def manage_person_profile(
     org = db.get(Organization, body.organization_id)
     if not org or org.district_id != body.district_id:
         raise HTTPException(400, "所选单位与区县不一致，或单位不存在")
+    previous_org = db.get(Organization, person.organization_id) if person.organization_id else None
     if admin.role == AdminRole.brigade:
-        current_org = db.get(Organization, person.organization_id) if person.organization_id else None
-        if (current_org and current_org.brigade_id != admin.brigade_id) or org.brigade_id != admin.brigade_id:
+        if (previous_org and previous_org.brigade_id != admin.brigade_id) or org.brigade_id != admin.brigade_id:
             raise HTTPException(403, "只能修改本大队人员")
         if body.is_admin:
             raise HTTPException(403, "大队账号不可设置管理员身份")
@@ -2535,6 +2572,7 @@ def manage_person_profile(
     person.district_id = body.district_id
     person.organization_id = body.organization_id
     person.job_title = body.job_title.strip() if body.job_title else None
+    _sync_external_placeholder_attendances(person, previous_org, org, db)
     if "person_category" in body.model_fields_set:
         person.person_category = body.person_category.strip() if body.person_category else None
     if admin.role == AdminRole.detachment:
@@ -2596,6 +2634,7 @@ def rebind_person_profile(
     org = db.get(Organization, body.organization_id)
     if not org or org.district_id != body.district_id:
         raise HTTPException(400, "所选单位与区县不一致，或单位不存在")
+    previous_org = db.get(Organization, person.organization_id) if person.organization_id else None
     dup = db.query(Person).filter(Person.phone == body.phone, Person.id != person.id).first()
     if dup:
         raise HTTPException(400, "该手机号已被其他人员绑定")
@@ -2605,6 +2644,7 @@ def rebind_person_profile(
     person.district_id = body.district_id
     person.organization_id = body.organization_id
     person.job_title = body.job_title.strip() if body.job_title else None
+    _sync_external_placeholder_attendances(person, previous_org, org, db)
     if "person_category" in body.model_fields_set:
         person.person_category = body.person_category.strip() if body.person_category else None
     db.commit()

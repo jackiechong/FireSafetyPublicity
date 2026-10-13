@@ -48,9 +48,7 @@ BRIGADES = [
     ("兴城大队", "XC"),
     ("高新大队", "GX"),
     ("杨家杖子大队", "YJZ"),
-    ("杨家杖子经济开发区大队", "YJJKQ"),
     ("经济开发区大队", "JJKFQ"),
-    ("高新技术开发区大队", "GXJSQ"),
 ]
 
 DEMO_MARK = "DEMO_SEED"
@@ -66,9 +64,9 @@ DISTRICT_DEFAULT_BRIGADE: dict[str, str] = {
     "绥中县": "SZ",
     "建昌县": "JC",
     "兴城市": "XC",
-    "杨家杖子经济开发区": "YJJKQ",
+    "杨家杖子经济开发区": "YJZ",
     "经济开发区": "JJKFQ",
-    "高新技术开发区": "GXJSQ",
+    "高新技术开发区": "GX",
 }
 
 DEFAULT_ORG_TYPES: list[tuple[str, str]] = [
@@ -105,9 +103,9 @@ DEMO_ORG_SPECS: list[tuple[str, OrgType, str, str]] = [
     ("【测试】兴城古城景区", OrgType.culture_tourism, "XC", "兴城市"),
     ("【测试】建昌县工业园区", OrgType.industry_agriculture, "JC", "建昌县"),
     ("【测试】南票区演示单位", OrgType.other_department, "NP", "南票区"),
-    ("【测试】杨家杖子经区演示单位", OrgType.development_reform, "YJJKQ", "杨家杖子经济开发区"),
+    ("【测试】杨家杖子经区演示单位", OrgType.development_reform, "YJZ", "杨家杖子经济开发区"),
     ("【测试】经济开发区演示单位", OrgType.commerce, "JJKFQ", "经济开发区"),
-    ("【测试】高新技术开发区演示单位", OrgType.emergency, "GXJSQ", "高新技术开发区"),
+    ("【测试】高新技术开发区演示单位", OrgType.emergency, "GX", "高新技术开发区"),
 ]
 
 
@@ -138,6 +136,8 @@ def _ensure_brigades(db: Session) -> None:
 _RETIRED_BRIGADE_HANDOFF = {
     "BH": "LG",  # 滨海大队 -> 龙港大队
     "JCXQ": "JC",  # 建昌新区大队 -> 建昌大队
+    "YJJKQ": "YJZ",  # 杨家杖子经济开发区大队 -> 杨家杖子大队
+    "GXJSQ": "GX",  # 高新技术开发区大队 -> 高新大队
 }
 
 

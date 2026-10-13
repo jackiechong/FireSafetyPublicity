@@ -237,9 +237,9 @@ _DISTRICT_DEFAULT_BRIGADE_CODE: dict[str, str] = {
     "绥中县": "SZ",
     "建昌县": "JC",
     "兴城市": "XC",
-    "杨家杖子经济开发区": "YJJKQ",
+    "杨家杖子经济开发区": "YJZ",
     "经济开发区": "JJKFQ",
-    "高新技术开发区": "GXJSQ",
+    "高新技术开发区": "GX",
 }
 
 

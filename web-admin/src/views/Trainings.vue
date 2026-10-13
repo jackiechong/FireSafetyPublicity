@@ -90,6 +90,11 @@
             <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
         </el-form-item>
+        <el-form-item label="培训主办单位" required>
+          <el-select v-model="editForm.brigade_id" style="width: 100%">
+            <el-option v-for="b in brigades" :key="b.id" :label="b.name" :value="b.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="开始时间" required>
           <el-date-picker v-model="editForm.start_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" style="width: 100%" />
         </el-form-item>
@@ -194,6 +199,7 @@ const editing = ref(null);
 const editForm = reactive({
   title: "",
   topic_id: null,
+  brigade_id: null,
   start_at: "",
   duration_minutes: 60,
   location: "",
@@ -266,6 +272,7 @@ function openEdit(row) {
   Object.assign(editForm, {
     title: row.title || "",
     topic_id: row.topic_id || null,
+    brigade_id: row.brigade_id || null,
     start_at: row.start_at ? row.start_at.slice(0, 19) : "",
     duration_minutes: row.duration_minutes || 0,
     location: row.location || "",
@@ -275,8 +282,8 @@ function openEdit(row) {
 }
 
 async function submitEdit() {
-  if (!editing.value || !editForm.title.trim() || !editForm.start_at) {
-    ElMessage.warning("请填写培训名称和开始时间");
+  if (!editing.value || !editForm.title.trim() || !editForm.brigade_id || !editForm.start_at) {
+    ElMessage.warning("请填写培训名称、培训主办单位和开始时间");
     return;
   }
   editSaving.value = true;
@@ -284,6 +291,7 @@ async function submitEdit() {
     await http.patch(`/api/admin/trainings/${editing.value.id}`, {
       title: editForm.title.trim(),
       topic_id: editForm.topic_id || null,
+      brigade_id: Number(editForm.brigade_id),
       start_at: editForm.start_at,
       duration_minutes: Number(editForm.duration_minutes || 0),
       location: editForm.location || null,
