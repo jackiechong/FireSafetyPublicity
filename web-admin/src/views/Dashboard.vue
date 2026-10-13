@@ -7,8 +7,8 @@
       </div>
       <div class="top-actions">
         <el-radio-group v-model="periodMode" @change="onPeriodModeChange">
-          <el-radio-button label="year">年</el-radio-button>
-          <el-radio-button label="month">月</el-radio-button>
+          <el-radio-button label="year">按年</el-radio-button>
+          <el-radio-button label="month">按月</el-radio-button>
         </el-radio-group>
         <el-date-picker
           v-model="periodValue"
@@ -49,8 +49,8 @@
     <section class="main-grid">
       <div class="panel span-2">
         <div class="panel-head">
-          <h2>主办单位培训时长排行</h2>
-          <span>按当前周期累计学时与场次</span>
+          <h2>大队培训时长排行</h2>
+          <span>{{ periodLabel }} · 含葫芦岛支队</span>
         </div>
         <div ref="brigadeChartRef" class="chart large" />
       </div>
@@ -306,7 +306,7 @@ function renderBrigadeChart() {
     .filter((item) => !["杨家杖子经济开发区大队", "高新技术开发区大队"].includes(item.brigade_name))
     .sort((a, b) => Number(a.total_minutes || 0) - Number(b.total_minutes || 0));
   brigadeChart.setOption({
-    grid: { left: 146, right: 92, top: 14, bottom: 14, containLabel: false },
+    grid: { left: 146, right: 126, top: 14, bottom: 42, containLabel: false },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -318,8 +318,17 @@ function renderBrigadeChart() {
     },
     xAxis: {
       type: "value",
+      splitNumber: 4,
       splitLine: { lineStyle: { color: "#e8edf5" } },
-      axisLabel: { color: "#7b8794", formatter: (value) => `${(Number(value) / 60).toFixed(0)}h` },
+      axisTick: { show: false },
+      axisLabel: {
+        color: "#667085",
+        margin: 12,
+        hideOverlap: false,
+        showMinLabel: true,
+        showMaxLabel: true,
+        formatter: (value) => `${(Number(value) / 60).toFixed(0)} 小时`,
+      },
     },
     yAxis: {
       type: "category",
