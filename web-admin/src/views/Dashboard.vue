@@ -192,7 +192,7 @@ const monthRange = computed(() => {
 const todaySessions = computed(() => trainings.value.filter((x) => inRange(x.start_at, todayRange.value)).length);
 const todayPeople = computed(() => trainings.value.filter((x) => inRange(x.start_at, todayRange.value)).reduce((s, x) => s + Number(x.person_count || 0), 0));
 const monthSessions = computed(() => trainings.value.filter((x) => inRange(x.start_at, monthRange.value)).length);
-const monthMinutes = computed(() => trainings.value.filter((x) => inRange(x.start_at, monthRange.value)).reduce((s, x) => s + Number(x.duration_minutes || 0) * Number(x.person_count || 0), 0));
+const monthMinutes = computed(() => trainings.value.filter((x) => inRange(x.start_at, monthRange.value)).reduce((s, x) => s + Number(x.duration_minutes || 0), 0));
 
 function normalizePeriodStart() {
   const raw = String(periodValue.value || "");

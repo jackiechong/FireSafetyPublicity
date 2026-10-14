@@ -1305,10 +1305,12 @@ def stats_by_district(
         q_sess = q_sess.filter(TrainingSession.start_at < end)
     sess_rows = {r[0]: int(r[1]) for r in q_sess.group_by(Organization.district_id).all()}
 
+    # 同一区县的同一场培训可能有多名人员签到，培训时长只应按场次计算一次。
     q_min = (
         db.query(
-            Organization.district_id,
-            func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0),
+            Organization.district_id.label("district_id"),
+            TrainingSession.id.label("session_id"),
+            TrainingSession.duration_minutes.label("duration_minutes"),
         )
         .select_from(TrainingAttendance)
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
@@ -1320,7 +1322,14 @@ def stats_by_district(
         q_min = q_min.filter(TrainingSession.start_at >= start)
     if end:
         q_min = q_min.filter(TrainingSession.start_at < end)
-    min_rows = {r[0]: int(r[1] or 0) for r in q_min.group_by(Organization.district_id).all()}
+    q_min = q_min.group_by(Organization.district_id, TrainingSession.id).subquery()
+    min_rows = {
+        r[0]: int(r[1] or 0)
+        for r in db.query(
+            q_min.c.district_id,
+            func.coalesce(func.sum(q_min.c.duration_minutes), 0),
+        ).group_by(q_min.c.district_id).all()
+    }
 
     districts = db.query(District).order_by(District.id).all()
     out: List[StatsDistrictItem] = []
@@ -1346,30 +1355,41 @@ def stats_by_brigade(
 ):
     """按培训主办单位汇总场次、参训人数和培训时长。"""
     bid = brigade_filter_brigade_id(admin)
-    totals = (
+    session_totals = (
         db.query(
             TrainingSession.brigade_id.label("brigade_id"),
-            func.count(func.distinct(TrainingSession.id)).label("session_count"),
+            func.count(TrainingSession.id).label("session_count"),
+            func.coalesce(func.sum(TrainingSession.duration_minutes), 0).label("total_minutes"),
+        )
+        .select_from(TrainingSession)
+    )
+    if bid is not None:
+        session_totals = session_totals.filter(TrainingSession.brigade_id == bid)
+    session_totals = _apply_time_range(session_totals, start, end).group_by(TrainingSession.brigade_id).subquery()
+
+    person_totals = (
+        db.query(
+            TrainingSession.brigade_id.label("brigade_id"),
             func.count(func.distinct(TrainingAttendance.person_id)).label("person_count"),
-            func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0).label("total_minutes"),
         )
         .select_from(TrainingSession)
         .outerjoin(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)
     )
     if bid is not None:
-        totals = totals.filter(TrainingSession.brigade_id == bid)
-    totals = _apply_time_range(totals, start, end).group_by(TrainingSession.brigade_id).subquery()
+        person_totals = person_totals.filter(TrainingSession.brigade_id == bid)
+    person_totals = _apply_time_range(person_totals, start, end).group_by(TrainingSession.brigade_id).subquery()
 
     brigades = db.query(
         Brigade,
-        totals.c.total_minutes,
-        totals.c.session_count,
-        totals.c.person_count,
+        session_totals.c.total_minutes,
+        session_totals.c.session_count,
+        person_totals.c.person_count,
     ).filter(~Brigade.code.in_(RETIRED_BRIGADE_CODES))
     if bid is not None:
         brigades = brigades.filter(Brigade.id == bid)
     rows = (
-        brigades.outerjoin(totals, totals.c.brigade_id == Brigade.id)
+        brigades.outerjoin(session_totals, session_totals.c.brigade_id == Brigade.id)
+        .outerjoin(person_totals, person_totals.c.brigade_id == Brigade.id)
         .order_by(Brigade.id)
         .all()
     )
@@ -1443,20 +1463,32 @@ def stats_orgs_by_district(
     bid = brigade_filter_brigade_id(admin)
     att_org_id = _attendance_org_id()
 
+    # 同一单位多人参加同一场培训时，只累计一次该场培训时长。
     sub_mins = (
         db.query(
             att_org_id.label("oid"),
-            func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0).label("tm"),
+            TrainingSession.id.label("session_id"),
+            TrainingSession.duration_minutes.label("duration_minutes"),
         )
         .select_from(TrainingAttendance)
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
-        .group_by(att_org_id)
+        .group_by(att_org_id, TrainingSession.id)
     )
     if start:
         sub_mins = sub_mins.filter(TrainingSession.start_at >= start)
     if end:
         sub_mins = sub_mins.filter(TrainingSession.start_at < end)
-    sub_mins = sub_mins.subquery()
+    if bid is not None:
+        sub_mins = sub_mins.filter(TrainingSession.brigade_id == bid)
+    session_mins = sub_mins.subquery()
+    sub_mins = (
+        db.query(
+            session_mins.c.oid,
+            func.coalesce(func.sum(session_mins.c.duration_minutes), 0).label("tm"),
+        )
+        .group_by(session_mins.c.oid)
+        .subquery()
+    )
 
     sub_pc = (
         db.query(
@@ -1471,6 +1503,8 @@ def stats_orgs_by_district(
         sub_pc = sub_pc.filter(TrainingSession.start_at >= start)
     if end:
         sub_pc = sub_pc.filter(TrainingSession.start_at < end)
+    if bid is not None:
+        sub_pc = sub_pc.filter(TrainingSession.brigade_id == bid)
     sub_pc = sub_pc.subquery()
 
     q = (
@@ -1520,32 +1554,55 @@ def stats_types_by_district(
         label = _org_type_name(o.org_type, db)
         counts[label] = counts.get(label, 0) + 1
 
-    q = (
+    session_minutes = (
         db.query(
-            att_org_id,
-            func.coalesce(func.sum(TrainingAttendance.duration_minutes), 0),
-            func.count(func.distinct(TrainingAttendance.person_id)),
+            att_org_id.label("oid"),
+            TrainingSession.id.label("session_id"),
+            TrainingSession.duration_minutes.label("duration_minutes"),
         )
         .select_from(TrainingAttendance)
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
         .filter(att_org_id.in_(list(org_type_by_id.keys()) or [-1]))
-        .group_by(att_org_id)
+        .group_by(att_org_id, TrainingSession.id)
     )
     if start:
-        q = q.filter(TrainingSession.start_at >= start)
+        session_minutes = session_minutes.filter(TrainingSession.start_at >= start)
     if end:
-        q = q.filter(TrainingSession.start_at < end)
-    rows = q.all()
+        session_minutes = session_minutes.filter(TrainingSession.start_at < end)
+    if bid is not None:
+        session_minutes = session_minutes.filter(TrainingSession.brigade_id == bid)
+    session_minutes = session_minutes.subquery()
+    duration_rows = db.query(
+        session_minutes.c.oid,
+        func.coalesce(func.sum(session_minutes.c.duration_minutes), 0),
+    ).group_by(session_minutes.c.oid).all()
+
+    person_counts = (
+        db.query(
+            att_org_id.label("oid"),
+            func.count(func.distinct(TrainingAttendance.person_id)).label("person_count"),
+        )
+        .select_from(TrainingAttendance)
+        .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
+        .filter(att_org_id.in_(list(org_type_by_id.keys()) or [-1]))
+    )
+    if start:
+        person_counts = person_counts.filter(TrainingSession.start_at >= start)
+    if end:
+        person_counts = person_counts.filter(TrainingSession.start_at < end)
+    if bid is not None:
+        person_counts = person_counts.filter(TrainingSession.brigade_id == bid)
+    person_rows = {r[0]: int(r[1] or 0) for r in person_counts.group_by(att_org_id).all()}
     totals: dict[str, dict[str, int]] = {
         label: {"total_minutes": 0, "person_count": 0, "organization_count": count}
         for label, count in counts.items()
     }
-    for oid, minutes, persons in rows:
+    for oid, minutes in duration_rows:
         label = _org_type_name(org_type_by_id.get(oid), db)
         if label not in totals:
             totals[label] = {"total_minutes": 0, "person_count": 0, "organization_count": 0}
         totals[label]["total_minutes"] += int(minutes or 0)
-        totals[label]["person_count"] += int(persons or 0)
+        totals[label]["person_count"] += person_rows.get(oid, 0)
 
     return [
         StatsTypeInDistrictItem(
