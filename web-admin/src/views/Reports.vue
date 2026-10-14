@@ -23,6 +23,9 @@
       <el-select v-model="jobTitle" clearable filterable placeholder="人员类别/职务" style="width: 180px">
         <el-option v-for="j in jobTitles" :key="j.id" :label="j.name" :value="j.name" />
       </el-select>
+      <el-select v-model="brigadeId" clearable placeholder="开展大队" style="width: 180px">
+        <el-option v-for="brigade in brigades" :key="brigade.id" :label="brigade.name" :value="brigade.id" />
+      </el-select>
       <el-select v-model="orgId" filterable remote clearable reserve-keyword placeholder="输入单位名称" :remote-method="remoteOrg" :loading="orgLoading" style="width: 260px">
         <el-option v-for="o in orgOptions" :key="o.id" :label="`${o.name}（${o.district_name}）`" :value="o.id" />
       </el-select>
@@ -181,6 +184,8 @@ const topics = ref([]);
 const jobTitles = ref([]);
 const topicId = ref();
 const jobTitle = ref("");
+const brigadeId = ref();
+const brigades = ref([]);
 const orgId = ref();
 const orgOptions = ref([]);
 const orgLoading = ref(false);
@@ -217,6 +222,7 @@ function params(extra = {}) {
   if (range.value?.[1]) p.end = range.value[1];
   if (topicId.value) p.topic_id = topicId.value;
   if (jobTitle.value) p.job_title = jobTitle.value;
+  if (brigadeId.value) p.brigade_id = brigadeId.value;
   return p;
 }
 
@@ -225,12 +231,14 @@ function fmt(v) {
 }
 
 async function loadMeta() {
-  const [topicRes, jobRes] = await Promise.all([
+  const [topicRes, jobRes, brigadeRes] = await Promise.all([
     http.get("/api/admin/training-topics"),
     http.get("/api/admin/job-titles"),
+    http.get("/api/admin/brigades"),
   ]);
   topics.value = topicRes.data || [];
   jobTitles.value = jobRes.data || [];
+  brigades.value = brigadeRes.data || [];
 }
 
 async function remoteOrg(q) {

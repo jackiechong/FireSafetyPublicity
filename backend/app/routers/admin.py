@@ -1722,8 +1722,11 @@ def stats_training_summary(
     end: Optional[datetime] = None,
     topic_id: Optional[int] = None,
     job_title: Optional[str] = None,
+    brigade_id: Optional[int] = None,
 ):
     q = _training_summary_query(admin, db, start, end)
+    if brigade_id is not None:
+        q = q.filter(TrainingSession.brigade_id == brigade_id)
     if topic_id is not None:
         q = q.filter(TrainingSession.topic_id == topic_id)
     if job_title:
@@ -1742,10 +1745,13 @@ def stats_training_summary_page(
     end: Optional[datetime] = None,
     topic_id: Optional[int] = None,
     job_title: Optional[str] = None,
+    brigade_id: Optional[int] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=10, le=100),
 ):
     q = _training_summary_query(admin, db, start, end)
+    if brigade_id is not None:
+        q = q.filter(TrainingSession.brigade_id == brigade_id)
     if topic_id is not None:
         q = q.filter(TrainingSession.topic_id == topic_id)
     if job_title:
@@ -1805,6 +1811,7 @@ def stats_by_job_title(
     job_title_only: bool = Query(False, description="仅按职务岗位匹配，不包含人员类别"),
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
+    brigade_id: Optional[int] = None,
 ):
     bid = brigade_filter_brigade_id(admin)
     att_org_id = _attendance_org_id()
@@ -1828,9 +1835,13 @@ def stats_by_job_title(
     )
     if bid is not None:
         base = base.filter(TrainingSession.brigade_id == bid)
+    if brigade_id is not None:
+        base = base.filter(TrainingSession.brigade_id == brigade_id)
     base = _apply_time_range(base, start, end)
     rows = base.group_by(District.id, District.name).order_by(District.id).all()
     trainings_q = _training_summary_query(admin, db, start, end).join(Person, Person.id == TrainingAttendance.person_id).filter(person_match)
+    if brigade_id is not None:
+        trainings_q = trainings_q.filter(TrainingSession.brigade_id == brigade_id)
     trainings = [_summary_item(r) for r in trainings_q.order_by(TrainingSession.start_at.desc()).limit(300).all()]
     return StatsJobTitleSummary(
         job_title=job_title,
@@ -1848,6 +1859,7 @@ def stats_by_topic(
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
     topic_id: Optional[int] = None,
+    brigade_id: Optional[int] = None,
 ):
     bid = brigade_filter_brigade_id(admin)
     q = (
@@ -1863,6 +1875,8 @@ def stats_by_topic(
     )
     if bid is not None:
         q = q.filter(TrainingSession.brigade_id == bid)
+    if brigade_id is not None:
+        q = q.filter(TrainingSession.brigade_id == brigade_id)
     if topic_id is not None:
         q = q.filter(TrainingSession.topic_id == topic_id)
     q = _apply_time_range(q, start, end)
@@ -1870,6 +1884,8 @@ def stats_by_topic(
     out: list[StatsTopicSummaryItem] = []
     for tid, name, count in rows:
         tq = _training_summary_query(admin, db, start, end)
+        if brigade_id is not None:
+            tq = tq.filter(TrainingSession.brigade_id == brigade_id)
         tq = tq.filter(TrainingSession.topic_id == tid) if tid else tq.filter(TrainingSession.topic_id.is_(None))
         trainings = [_summary_item(r) for r in tq.order_by(TrainingSession.start_at.desc()).limit(300).all()]
         brigades = sorted({t.brigade_name for t in trainings if t.brigade_name})
@@ -1890,6 +1906,7 @@ def stats_org_completion(
     organization_id: int = Query(..., ge=1),
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
+    brigade_id: Optional[int] = None,
 ):
     org = db.get(Organization, organization_id)
     if not org:
@@ -1917,6 +1934,8 @@ def stats_org_completion(
                 or_(Person.person_category == title, Person.job_title == title),
             )
         )
+        if brigade_id is not None:
+            q = q.filter(TrainingSession.brigade_id == brigade_id)
         q = _apply_time_range(q, start, end)
         trained = int(q.scalar() or 0)
         total_i = int(total or 0)
@@ -1938,8 +1957,11 @@ def export_training_summary(
     end: Optional[datetime] = None,
     topic_id: Optional[int] = None,
     job_title: Optional[str] = None,
+    brigade_id: Optional[int] = None,
 ):
     q = _training_summary_query(admin, db, start, end)
+    if brigade_id is not None:
+        q = q.filter(TrainingSession.brigade_id == brigade_id)
     if topic_id is not None:
         q = q.filter(TrainingSession.topic_id == topic_id)
     if job_title:
