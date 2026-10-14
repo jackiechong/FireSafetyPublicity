@@ -1370,7 +1370,7 @@ def stats_by_brigade(
     person_totals = (
         db.query(
             TrainingSession.brigade_id.label("brigade_id"),
-            func.count(func.distinct(TrainingAttendance.person_id)).label("person_count"),
+            func.count(TrainingAttendance.id).label("person_count"),
         )
         .select_from(TrainingSession)
         .outerjoin(TrainingAttendance, TrainingAttendance.session_id == TrainingSession.id)

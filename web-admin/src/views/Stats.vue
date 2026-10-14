@@ -81,6 +81,12 @@
     </el-row>
 
     <el-form :inline="true" class="toolbar">
+      <el-form-item label="排行依据">
+        <el-radio-group v-model="rankMetric" @change="renderChart">
+          <el-radio-button label="duration">培训时长</el-radio-button>
+          <el-radio-button label="person">培训人次</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
       <el-form-item label="培训主办单位">
         <el-select
           v-model="brigadeFilter"
@@ -197,6 +203,7 @@ const districtFilter = ref();
 const brigadeOptions = ref([]);
 const brigadeData = ref([]);
 const brigadeFilter = ref();
+const rankMetric = ref("duration");
 const orgsInDistrict = ref([]);
 const typeStatsInDistrict = ref([]);
 const orgFilter = ref();
@@ -437,17 +444,17 @@ async function loadBrigadeStats() {
 function renderBarChart() {
   if (!chartRef.value) return;
   if (!chart) chart = echarts.init(chartRef.value);
-  const list = brigadeData.value.length ? brigadeData.value : [];
+  const list = [...brigadeData.value].sort((a, b) => rankValue(b) - rankValue(a));
   const names = list.map((item) => item.brigade_name);
-  const vals = list.map((item) => item.total_minutes);
+  const vals = list.map((item) => rankValue(item));
   chart.setOption(
     {
-      title: { text: "各培训主办单位培训时长对比", left: "center", textStyle: { fontSize: 16 } },
+      title: { text: `各培训主办单位${rankMetricLabel()}对比`, left: "center", textStyle: { fontSize: 16 } },
       tooltip: {
         trigger: "axis",
         formatter: (items) => {
           const p = items[0];
-          return `${p.name}<br/>${formatTrainingHours(p.value)}`;
+          return `${p.name}<br/>${formatRankValue(p.value)}`;
         },
       },
       grid: { left: 56, right: 24, bottom: 88, top: 48 },
@@ -473,7 +480,7 @@ function renderBarChart() {
         type: "value",
         name: "",
         axisLabel: {
-          formatter: (v) => formatMinutesAxisHours(v),
+          formatter: (v) => rankMetric.value === "person" ? `${v} 人次` : formatMinutesAxisHours(v),
         },
       },
       series: [
@@ -543,6 +550,18 @@ function renderOrgPie() {
 async function renderChart() {
   await nextTick();
   renderBarChart();
+}
+
+function rankValue(item) {
+  return Number(rankMetric.value === "person" ? item.person_count : item.total_minutes) || 0;
+}
+
+function rankMetricLabel() {
+  return rankMetric.value === "person" ? "培训人次" : "培训时长";
+}
+
+function formatRankValue(value) {
+  return rankMetric.value === "person" ? `${value} 人次` : formatTrainingHours(value);
 }
 
 async function onDistrictChange() {

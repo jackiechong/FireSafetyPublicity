@@ -6,6 +6,10 @@
         <p>{{ scopeText }} · {{ periodLabel }}培训运行情况</p>
       </div>
       <div class="top-actions">
+        <el-radio-group v-model="rankMetric" @change="renderBrigadeChart">
+          <el-radio-button label="duration">培训时长</el-radio-button>
+          <el-radio-button label="person">培训人次</el-radio-button>
+        </el-radio-group>
         <el-radio-group v-model="periodMode" @change="onPeriodModeChange">
           <el-radio-button label="year">按年</el-radio-button>
           <el-radio-button label="month">按月</el-radio-button>
@@ -49,7 +53,7 @@
     <section class="main-grid">
       <div class="panel span-2">
         <div class="panel-head">
-          <h2>大队培训时长排行</h2>
+          <h2>大队{{ rankMetricLabel }}排行</h2>
           <span>{{ periodLabel }} · 含葫芦岛支队</span>
         </div>
         <div ref="brigadeChartRef" class="chart large" />
@@ -145,6 +149,7 @@ import { formatTrainingHours } from "../utils/duration";
 
 const periodMode = ref("year");
 const periodValue = ref(String(new Date().getFullYear()));
+const rankMetric = ref("duration");
 const currentAdmin = ref(null);
 const districtStats = ref([]);
 const brigadeStats = ref([]);
@@ -165,6 +170,7 @@ const periodLabel = computed(() => {
   const raw = String(periodValue.value || "");
   return periodMode.value === "year" ? `${raw} 年度` : `${raw.replace("-", " 年 ")} 月`;
 });
+const rankMetricLabel = computed(() => (rankMetric.value === "person" ? "培训人次" : "培训时长"));
 const totalMinutes = computed(() => brigadeStats.value.reduce((s, x) => s + Number(x.total_minutes || 0), 0));
 const totalSessions = computed(() => brigadeStats.value.reduce((s, x) => s + Number(x.session_count || 0), 0));
 const personTotal = computed(() => persons.value.length);
@@ -304,7 +310,7 @@ function renderBrigadeChart() {
   if (!brigadeChart) brigadeChart = echarts.init(brigadeChartRef.value);
   const list = [...brigadeStats.value]
     .filter((item) => !["杨家杖子经济开发区大队", "高新技术开发区大队"].includes(item.brigade_name))
-    .sort((a, b) => Number(a.total_minutes || 0) - Number(b.total_minutes || 0));
+    .sort((a, b) => rankValue(b) - rankValue(a));
   brigadeChart.setOption({
     grid: { left: 146, right: 126, top: 14, bottom: 42, containLabel: false },
     tooltip: {
@@ -313,7 +319,7 @@ function renderBrigadeChart() {
       formatter: (items) => {
         const item = items[0];
         const row = list[item.dataIndex];
-        return `${row.brigade_name}<br/>培训时长：${formatTrainingHours(row.total_minutes)}<br/>培训场次：${row.session_count} 场<br/>参训人数：${row.person_count} 人`;
+        return `${row.brigade_name}<br/>培训时长：${formatTrainingHours(row.total_minutes)}<br/>培训人次：${row.person_count} 人次<br/>培训场次：${row.session_count} 场`;
       },
     },
     xAxis: {
@@ -327,7 +333,7 @@ function renderBrigadeChart() {
         hideOverlap: false,
         showMinLabel: true,
         showMaxLabel: true,
-        formatter: (value) => `${(Number(value) / 60).toFixed(0)} 小时`,
+        formatter: (value) => rankMetric.value === "person" ? `${value} 人次` : `${(Number(value) / 60).toFixed(0)} 小时`,
       },
     },
     yAxis: {
@@ -339,7 +345,7 @@ function renderBrigadeChart() {
     },
     series: [{
       type: "bar",
-      data: list.map((item) => ({ value: item.total_minutes, sessionCount: item.session_count })),
+      data: list.map((item) => ({ value: rankValue(item), sessionCount: item.session_count })),
       barWidth: 18,
       itemStyle: { color: "#1677d2", borderRadius: [0, 5, 5, 0] },
       label: {
@@ -347,10 +353,18 @@ function renderBrigadeChart() {
         position: "right",
         color: "#344054",
         fontSize: 12,
-        formatter: (params) => `${formatTrainingHours(params.value)}  ·  ${params.data.sessionCount}场`,
+        formatter: (params) => `${formatRankValue(params.value)}  ·  ${params.data.sessionCount}场`,
       },
     }],
   }, { notMerge: true });
+}
+
+function rankValue(item) {
+  return Number(rankMetric.value === "person" ? item.person_count : item.total_minutes) || 0;
+}
+
+function formatRankValue(value) {
+  return rankMetric.value === "person" ? `${value} 人次` : formatTrainingHours(value);
 }
 
 function renderTopicChart() {
