@@ -204,13 +204,18 @@ def _ensure_training_access(sess: TrainingSession, admin: AdminUser) -> None:
 
 
 def _attendance_rows_for_session(db: Session, session_id: int) -> list[TrainingAttendancePersonItem]:
-    att_org_id = _attendance_org_id()
+    # 签到簿以人员档案当前所属单位为准；兼容旧数据仍保留签到/培训单位作为回退。
+    export_org_id = func.coalesce(
+        Person.organization_id,
+        TrainingAttendance.organization_id,
+        TrainingSession.organization_id,
+    )
     rows = (
         db.query(TrainingAttendance, Person, Organization)
         .select_from(TrainingAttendance)
         .join(Person, Person.id == TrainingAttendance.person_id)
         .join(TrainingSession, TrainingSession.id == TrainingAttendance.session_id)
-        .outerjoin(Organization, Organization.id == att_org_id)
+        .outerjoin(Organization, Organization.id == export_org_id)
         .filter(TrainingAttendance.session_id == session_id)
         .order_by(Organization.name, Person.name, Person.id)
         .all()
@@ -2715,24 +2720,17 @@ def _sync_person_admin(person: Person, org: Organization, is_admin: bool, db: Se
     db.add(AdminWxBinding(admin_user_id=admin.id, wx_openid=person.openid, person_id=person.id, bound_at=datetime.utcnow()))
 
 
-def _sync_external_placeholder_attendances(
+def _sync_person_attendance_organization(
     person: Person,
     previous_org: Optional[Organization],
     target_org: Organization,
     db: Session,
 ) -> None:
-    """人员补全正式单位后，同步修正外部扫码导入产生的待完善签到单位。"""
-    if not previous_org or previous_org.id == target_org.id:
-        return
-    is_placeholder = (
-        previous_org.remark == "EXTERNAL_SCAN_IMPORT_PLACEHOLDER"
-        or previous_org.name == "外部培训待完善单位"
-    )
-    if not is_placeholder:
+    """人员调整单位后，同步更新其历史培训签到的单位信息。"""
+    if previous_org and previous_org.id == target_org.id:
         return
     db.query(TrainingAttendance).filter(
         TrainingAttendance.person_id == person.id,
-        TrainingAttendance.organization_id == previous_org.id,
     ).update({"organization_id": target_org.id}, synchronize_session=False)
 
 
@@ -2766,7 +2764,7 @@ def manage_person_profile(
     person.district_id = body.district_id
     person.organization_id = body.organization_id
     person.job_title = body.job_title.strip() if body.job_title else None
-    _sync_external_placeholder_attendances(person, previous_org, org, db)
+    _sync_person_attendance_organization(person, previous_org, org, db)
     if "person_category" in body.model_fields_set:
         person.person_category = body.person_category.strip() if body.person_category else None
     if admin.role == AdminRole.detachment:
@@ -2838,7 +2836,7 @@ def rebind_person_profile(
     person.district_id = body.district_id
     person.organization_id = body.organization_id
     person.job_title = body.job_title.strip() if body.job_title else None
-    _sync_external_placeholder_attendances(person, previous_org, org, db)
+    _sync_person_attendance_organization(person, previous_org, org, db)
     if "person_category" in body.model_fields_set:
         person.person_category = body.person_category.strip() if body.person_category else None
     db.commit()
