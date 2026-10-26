@@ -92,30 +92,28 @@ def _is_imported_person(person: Person) -> bool:
 
 def _merge_imported_person(imported: Person, registered: Person, db: Session) -> None:
     """Keep imported training history when its owner later registers with WeChat."""
-    imported_attendances = (
-        db.query(TrainingAttendance)
-        .filter(TrainingAttendance.person_id == imported.id)
+    registered_session_ids = [
+        session_id
+        for (session_id,) in db.query(TrainingAttendance.session_id)
+        .filter(TrainingAttendance.person_id == registered.id)
         .all()
-    )
-    for attendance in imported_attendances:
-        already_registered = (
-            db.query(TrainingAttendance)
-            .filter(
-                TrainingAttendance.session_id == attendance.session_id,
-                TrainingAttendance.person_id == registered.id,
-            )
-            .first()
-        )
-        if already_registered:
-            db.delete(attendance)
-        else:
-            attendance.person_id = registered.id
+    ]
+    if registered_session_ids:
+        # Remove duplicate sign-ins before moving the remaining history. This
+        # respects the one-person-per-session database constraint.
+        db.query(TrainingAttendance).filter(
+            TrainingAttendance.person_id == imported.id,
+            TrainingAttendance.session_id.in_(registered_session_ids),
+        ).delete(synchronize_session=False)
 
-    # An imported person can later have been assigned an admin account.
+    db.query(TrainingAttendance).filter(
+        TrainingAttendance.person_id == imported.id
+    ).update({TrainingAttendance.person_id: registered.id}, synchronize_session=False)
+
     db.query(AdminWxBinding).filter(AdminWxBinding.person_id == imported.id).update(
         {AdminWxBinding.person_id: registered.id}, synchronize_session=False
     )
-    db.delete(imported)
+    db.query(Person).filter(Person.id == imported.id).delete(synchronize_session=False)
 
 
 def _require_complete_profile(person: Person) -> None:
@@ -326,7 +324,11 @@ def mp_profile(
     phone = body.phone.strip()
     dup = db.query(Person).filter(Person.phone == phone, Person.id != person.id).first()
     if dup and _is_imported_person(dup):
-        _merge_imported_person(dup, person, db)
+        try:
+            _merge_imported_person(dup, person, db)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(409, "该手机号的历史培训记录正在同步，请稍后重试")
     elif dup:
         raise HTTPException(400, "该手机号已被其他账号绑定")
 
