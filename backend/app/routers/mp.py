@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_person_token, resolve_mp_admin
-from app.models import AppSetting, Brigade, District, JobTitleOption, KnowledgeArticle, KnowledgeCategoryOption, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession, TrainingTopicOption
+from app.models import AdminWxBinding, AppSetting, Brigade, District, JobTitleOption, KnowledgeArticle, KnowledgeCategoryOption, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession, TrainingTopicOption
 from app.schemas import (
     DistrictOut,
     MpActiveTrainingItem,
@@ -84,6 +84,38 @@ def _profile_complete(p: Person) -> bool:
         and p.district_id
         and p.organization_id
     )
+
+
+def _is_imported_person(person: Person) -> bool:
+    return (person.openid or "").startswith("imported_")
+
+
+def _merge_imported_person(imported: Person, registered: Person, db: Session) -> None:
+    """Keep imported training history when its owner later registers with WeChat."""
+    imported_attendances = (
+        db.query(TrainingAttendance)
+        .filter(TrainingAttendance.person_id == imported.id)
+        .all()
+    )
+    for attendance in imported_attendances:
+        already_registered = (
+            db.query(TrainingAttendance)
+            .filter(
+                TrainingAttendance.session_id == attendance.session_id,
+                TrainingAttendance.person_id == registered.id,
+            )
+            .first()
+        )
+        if already_registered:
+            db.delete(attendance)
+        else:
+            attendance.person_id = registered.id
+
+    # An imported person can later have been assigned an admin account.
+    db.query(AdminWxBinding).filter(AdminWxBinding.person_id == imported.id).update(
+        {AdminWxBinding.person_id: registered.id}, synchronize_session=False
+    )
+    db.delete(imported)
 
 
 def _require_complete_profile(person: Person) -> None:
@@ -291,19 +323,10 @@ def mp_profile(
     person: Annotated[Person, Depends(get_current_person_token)],
     db: Session = Depends(get_db),
 ):
-    dup = db.query(Person).filter(Person.phone == body.phone, Person.id != person.id).first()
-    if dup and (dup.openid or "").startswith("imported_"):
-        for att in db.query(TrainingAttendance).filter(TrainingAttendance.person_id == dup.id).all():
-            exists = db.query(TrainingAttendance).filter(
-                TrainingAttendance.session_id == att.session_id,
-                TrainingAttendance.person_id == person.id,
-            ).first()
-            if exists:
-                db.delete(att)
-            else:
-                att.person_id = person.id
-        db.delete(dup)
-        db.flush()
+    phone = body.phone.strip()
+    dup = db.query(Person).filter(Person.phone == phone, Person.id != person.id).first()
+    if dup and _is_imported_person(dup):
+        _merge_imported_person(dup, person, db)
     elif dup:
         raise HTTPException(400, "该手机号已被其他账号绑定")
 
@@ -314,11 +337,15 @@ def mp_profile(
         raise HTTPException(400, "所选单位与区县不一致，或单位不存在")
 
     person.name = body.name.strip()
-    person.phone = body.phone.strip()
+    person.phone = phone
     person.district_id = body.district_id
     person.organization_id = body.organization_id
     person.job_title = body.job_title.strip() if body.job_title else None
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "该手机号的历史培训记录正在同步，请稍后重试")
     db.refresh(person)
     return _build_person_out(person, db)
 
