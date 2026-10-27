@@ -2755,9 +2755,6 @@ def manage_person_profile(
             raise HTTPException(403, "只能修改本大队人员")
         if body.is_admin:
             raise HTTPException(403, "大队账号不可设置管理员身份")
-    dup = db.query(Person).filter(Person.phone == body.phone, Person.id != person.id).first()
-    if dup:
-        raise HTTPException(400, "该手机号已被其他人员绑定")
 
     person.name = body.name.strip()
     person.phone = body.phone.strip()
@@ -2827,9 +2824,6 @@ def rebind_person_profile(
     if not org or org.district_id != body.district_id:
         raise HTTPException(400, "所选单位与区县不一致，或单位不存在")
     previous_org = db.get(Organization, person.organization_id) if person.organization_id else None
-    dup = db.query(Person).filter(Person.phone == body.phone, Person.id != person.id).first()
-    if dup:
-        raise HTTPException(400, "该手机号已被其他人员绑定")
 
     person.name = body.name.strip()
     person.phone = body.phone.strip()

@@ -320,15 +320,17 @@ def mp_profile(
     db: Session = Depends(get_db),
 ):
     phone = body.phone.strip()
-    dup = db.query(Person).filter(Person.phone == phone, Person.id != person.id).first()
-    if dup and _is_imported_person(dup):
+    imported_dups = (
+        db.query(Person)
+        .filter(Person.phone == phone, Person.id != person.id, Person.openid.like("imported_%"))
+        .all()
+    )
+    for dup in imported_dups:
         try:
             _merge_imported_person(dup, person, db)
         except IntegrityError:
             db.rollback()
             raise HTTPException(409, "该手机号的历史培训记录正在同步，请稍后重试")
-    elif dup:
-        raise HTTPException(400, "该手机号已被其他账号绑定")
 
     if not db.get(District, body.district_id):
         raise HTTPException(400, "区县不存在")
