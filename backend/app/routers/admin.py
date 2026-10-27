@@ -2596,6 +2596,12 @@ def create_admin_wx_bind_code(
     raise HTTPException(500, "绑定码生成失败，请重试")
 
 
+def _is_person_wechat_bound(openid: Optional[str]) -> bool:
+    if not openid:
+        return False
+    return not openid.startswith(("imported_", "manual_", "seed_"))
+
+
 def _person_out(person: Person, db: Session) -> AdminPersonOut:
     district = db.get(District, person.district_id) if person.district_id else None
     org = db.get(Organization, person.organization_id) if person.organization_id else None
@@ -2616,7 +2622,7 @@ def _person_out(person: Person, db: Session) -> AdminPersonOut:
         organization_name=org.name if org else None,
         job_title=person.job_title,
         person_category=person.person_category,
-        wechat_bound=bool(person.openid),
+        wechat_bound=_is_person_wechat_bound(person.openid),
         is_admin=bool(admin and admin.is_active),
         admin_role=admin.role.value if admin else None,
         admin_brigade_id=admin.brigade_id if admin else None,

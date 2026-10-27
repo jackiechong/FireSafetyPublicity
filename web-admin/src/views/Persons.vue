@@ -46,6 +46,13 @@
       <el-table-column prop="job_title" label="职务岗位" min-width="130">
         <template #default="{ row }">{{ row.job_title || "—" }}</template>
       </el-table-column>
+      <el-table-column label="微信绑定" width="110">
+        <template #default="{ row }">
+          <el-tag :type="row.wechat_bound ? 'success' : 'info'" size="small">
+            {{ row.wechat_bound ? "已绑定" : "未绑定" }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="管理员" width="160">
         <template #default="{ row }">
           <el-tag v-if="row.is_admin" type="success">
