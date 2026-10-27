@@ -87,7 +87,7 @@ from app.schemas import (
 )
 from app.config import settings
 from app.security import create_access_token, hash_password, verify_password
-from app.training_activity import deactivate_expired_sessions, end_of_local_day_utc
+from app.training_activity import deactivate_expired_sessions, end_of_local_day_utc, now_local
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -155,7 +155,7 @@ def _set_setting(db: Session, key: str, value: str) -> None:
         db.add(row)
     else:
         row.value = value
-        row.updated_at = datetime.utcnow()
+        row.updated_at = now_local()
 
 
 def _is_detachment_brigade(db: Session, brigade_id: Optional[int]) -> bool:
@@ -718,7 +718,7 @@ def update_knowledge_article(
         raise HTTPException(404, "内容不存在")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(row, k, v)
-    row.updated_at = datetime.utcnow()
+    row.updated_at = now_local()
     db.commit()
     db.refresh(row)
     return row
@@ -746,10 +746,10 @@ async def upload_media(
     if ext not in UPLOAD_EXTENSIONS:
         raise HTTPException(400, "仅支持 jpg、png、webp、gif、mp4、mov、m4v、webm 文件")
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
-    folder = datetime.utcnow().strftime("%Y%m")
+    folder = now_local().strftime("%Y%m")
     target_dir = UPLOAD_ROOT / folder
     target_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{ext}"
+    filename = f"{now_local().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{ext}"
     target = target_dir / filename
     size = 0
     with target.open("wb") as out:
@@ -1065,7 +1065,7 @@ def patch_training(
     if "is_active" in data:
         sess.is_active = bool(data["is_active"])
         if not sess.is_active:
-            sess.end_at = datetime.utcnow()
+            sess.end_at = now_local()
     for key in ("title", "topic_id", "start_at", "end_at", "duration_minutes", "location", "remark"):
         if key in data:
             setattr(sess, key, data[key])
@@ -1087,7 +1087,7 @@ def end_training(
         raise HTTPException(404, "培训不存在")
     _ensure_training_access(sess, admin)
     sess.is_active = False
-    sess.end_at = datetime.utcnow()
+    sess.end_at = now_local()
     db.commit()
     db.refresh(sess)
     return sess
@@ -1171,7 +1171,7 @@ def create_training_quick(
         TrainingTopicOption.is_active.is_(True),
     ).first():
         raise HTTPException(400, "培训主题不存在或已停用")
-    start = body.start_at or datetime.utcnow()
+    start = body.start_at or now_local()
     sess = TrainingSession(
         title=body.title.strip(),
         topic_id=body.topic_id,
@@ -2580,11 +2580,11 @@ def create_admin_wx_bind_code(
         raise HTTPException(400, "账号已停用，无法绑定")
 
     ttl = 15
-    expires_at = datetime.utcnow() + timedelta(minutes=ttl)
+    expires_at = now_local() + timedelta(minutes=ttl)
     db.query(AdminWxBindCode).filter(
         AdminWxBindCode.admin_user_id == u.id,
         AdminWxBindCode.used_at.is_(None),
-    ).update({AdminWxBindCode.used_at: datetime.utcnow()}, synchronize_session=False)
+    ).update({AdminWxBindCode.used_at: now_local()}, synchronize_session=False)
     for _ in range(20):
         code = f"{secrets.randbelow(100_000_000):08d}"
         if db.query(AdminWxBindCode).filter(AdminWxBindCode.code == code).first():
@@ -2717,7 +2717,7 @@ def _sync_person_admin(person: Person, org: Organization, is_admin: bool, db: Se
     )
     db.add(admin)
     db.flush()
-    db.add(AdminWxBinding(admin_user_id=admin.id, wx_openid=person.openid, person_id=person.id, bound_at=datetime.utcnow()))
+    db.add(AdminWxBinding(admin_user_id=admin.id, wx_openid=person.openid, person_id=person.id, bound_at=now_local()))
 
 
 def _sync_person_attendance_organization(
@@ -2871,7 +2871,7 @@ def unbind_person_profile(
     person.organization_id = None
     person.job_title = None
     person.person_category = None
-    person.updated_at = datetime.utcnow()
+    person.updated_at = now_local()
     db.commit()
 
 

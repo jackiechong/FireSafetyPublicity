@@ -30,7 +30,7 @@ from app.schemas import (
     TrainingSessionPatch,
     TrainingSessionOut,
 )
-from app.training_activity import deactivate_expired_sessions
+from app.training_activity import deactivate_expired_sessions, now_local
 
 router = APIRouter(prefix="/api/mp/admin", tags=["mp-admin"])
 
@@ -76,7 +76,7 @@ def mp_wx_bind(
         raise HTTPException(400, "绑定码无效或已过期，请在网站重新生成")
     if row.failed_attempts >= 5:
         raise HTTPException(400, "输入错误次数过多，请在网站重新生成绑定码")
-    if row.used_at is not None or row.expires_at <= datetime.utcnow():
+    if row.used_at is not None or row.expires_at <= now_local():
         row.failed_attempts += 1
         db.commit()
         raise HTTPException(400, "绑定码无效或已过期，请在网站重新生成")
@@ -97,13 +97,13 @@ def mp_wx_bind(
         binding.admin_user_id = admin.id
         binding.person_id = person.id
         binding.is_active = True
-        binding.bound_at = datetime.utcnow()
+        binding.bound_at = now_local()
     else:
-        db.add(AdminWxBinding(admin_user_id=admin.id, wx_openid=person.openid, person_id=person.id, bound_at=datetime.utcnow()))
+        db.add(AdminWxBinding(admin_user_id=admin.id, wx_openid=person.openid, person_id=person.id, bound_at=now_local()))
     if not admin.wx_openid:
         admin.wx_openid = person.openid
-        admin.wx_bound_at = datetime.utcnow()
-    row.used_at = datetime.utcnow()
+        admin.wx_bound_at = now_local()
+    row.used_at = now_local()
     db.commit()
     db.refresh(admin)
 
@@ -427,7 +427,7 @@ def mp_admin_patch_training(
     if "is_active" in data:
         sess.is_active = bool(data["is_active"])
         if not sess.is_active:
-            sess.end_at = datetime.utcnow()
+            sess.end_at = now_local()
     db.commit()
     db.refresh(sess)
     return sess

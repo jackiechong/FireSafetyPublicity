@@ -1,7 +1,5 @@
 from typing import Annotated, List
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
@@ -9,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_person_token, resolve_mp_admin
-from app.models import AdminWxBinding, AppSetting, Brigade, District, JobTitleOption, KnowledgeArticle, KnowledgeCategoryOption, Organization, OrgTypeOption, Person, TrainingAttendance, TrainingSession, TrainingTopicOption
+from app.models import AdminWxBinding, AppSetting, Brigade, District, JobTitleOption, KnowledgeArticle, KnowledgeCategoryOption, Organization, OrgType, OrgTypeOption, Person, TrainingAttendance, TrainingSession, TrainingTopicOption
 from app.schemas import (
     DistrictOut,
     MpActiveTrainingItem,
@@ -27,7 +25,7 @@ from app.schemas import (
     KnowledgeArticleOut,
 )
 from app.security import create_access_token
-from app.training_activity import deactivate_expired_sessions, effective_end_utc, session_allows_checkin, today_bounds_utc
+from app.training_activity import deactivate_expired_sessions, effective_end_utc, now_local, session_allows_checkin, today_bounds_utc
 from app.wechat import code_to_session
 
 router = APIRouter(prefix="/api/mp", tags=["miniprogram"])
@@ -360,7 +358,7 @@ def mp_active_trainings(
     """今天全市未结束且未手动结束的活动场次，供人员选择加入。"""
     _require_complete_profile(person)
     deactivate_expired_sessions(db)
-    now = datetime.utcnow()
+    now = now_local()
     day_start, day_end = today_bounds_utc(now)
     rows = (
         db.query(TrainingSession, Organization, District)

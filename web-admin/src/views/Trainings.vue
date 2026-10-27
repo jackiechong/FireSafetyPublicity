@@ -263,12 +263,18 @@ function changePage(nextPage) {
   load();
 }
 
+function localNowIso() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function openCreate() {
   Object.assign(createForm, {
     title: "",
     topic_id: null,
     brigade_id: brigades.value[0]?.id ?? null,
-    start_at: new Date().toISOString().slice(0, 19),
+    start_at: localNowIso(),
     duration_minutes: 60,
     location: "",
     remark: "",

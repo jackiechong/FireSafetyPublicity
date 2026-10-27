@@ -1,5 +1,6 @@
 import enum
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
     Boolean,
@@ -14,6 +15,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+_LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+
+
+def _now_local() -> datetime:
+    return datetime.now(_LOCAL_TZ).replace(tzinfo=None)
 
 
 class OrgType(str, enum.Enum):
@@ -43,7 +50,7 @@ class OrgTypeOption(Base):
     name: Mapped[str] = mapped_column(String(64), unique=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
 
 
 class JobTitleOption(Base):
@@ -53,7 +60,7 @@ class JobTitleOption(Base):
     name: Mapped[str] = mapped_column(String(64), unique=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
 
 
 class TrainingTopicOption(Base):
@@ -63,7 +70,7 @@ class TrainingTopicOption(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
 
 
 class KnowledgeArticle(Base):
@@ -77,8 +84,8 @@ class KnowledgeArticle(Base):
     video_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local, onupdate=_now_local)
 
 
 class KnowledgeCategoryOption(Base):
@@ -89,7 +96,7 @@ class KnowledgeCategoryOption(Base):
     name: Mapped[str] = mapped_column(String(64), unique=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
 
 
 class AppSetting(Base):
@@ -98,7 +105,7 @@ class AppSetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     value: Mapped[str] = mapped_column(Text, default="")
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local, onupdate=_now_local)
 
 
 class AdminUser(Base):
@@ -129,7 +136,7 @@ class AdminWxBindCode(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
 
     admin_user = relationship("AdminUser", back_populates="wx_bind_codes")
 
@@ -143,7 +150,7 @@ class AdminWxBinding(Base):
     admin_user_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"), index=True)
     wx_openid: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     person_id: Mapped[int | None] = mapped_column(ForeignKey("persons.id"), nullable=True, index=True)
-    bound_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    bound_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     remark: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
@@ -182,7 +189,7 @@ class Organization(Base):
     contact_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     remark: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
 
     brigade = relationship("Brigade", back_populates="organizations")
     district = relationship("District", back_populates="organizations")
@@ -203,9 +210,9 @@ class Person(Base):
     organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     job_title: Mapped[str | None] = mapped_column(String(64), nullable=True)
     person_category: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=_now_local, onupdate=_now_local
     )
 
     district = relationship("District", foreign_keys=[district_id])
@@ -227,7 +234,7 @@ class TrainingSession(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     location: Mapped[str | None] = mapped_column(String(256), nullable=True)
     remark: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
 
     organization = relationship("Organization", back_populates="trainings")
     topic = relationship("TrainingTopicOption", foreign_keys=[topic_id])
@@ -243,7 +250,7 @@ class TrainingAttendance(Base):
     person_id: Mapped[int] = mapped_column(ForeignKey("persons.id"), index=True)
     organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
-    checked_in_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    checked_in_at: Mapped[datetime] = mapped_column(DateTime, default=_now_local)
 
     session = relationship("TrainingSession", back_populates="attendances")
     person = relationship("Person", back_populates="attendances")
