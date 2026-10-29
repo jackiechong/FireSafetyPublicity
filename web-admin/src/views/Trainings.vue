@@ -64,7 +64,7 @@
         </el-form-item>
         <el-form-item label="主题分类">
           <el-select v-model="createForm.topic_id" clearable style="width: 100%">
-            <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
+            <el-option v-for="t in activeTopics" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="培训主办单位" required>
@@ -98,7 +98,7 @@
         </el-form-item>
         <el-form-item label="主题分类">
           <el-select v-model="editForm.topic_id" clearable style="width: 100%">
-            <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
+            <el-option v-for="t in editTopicOptions" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="培训主办单位" required>
@@ -173,7 +173,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import http from "../api/http";
 
@@ -223,6 +223,11 @@ const attListSession = ref(null);
 const page = ref(1);
 const pageSize = ref(20);
 const total = ref(0);
+
+const activeTopics = computed(() => topics.value.filter((t) => t.is_active !== false));
+const editTopicOptions = computed(() =>
+  topics.value.filter((t) => t.is_active !== false || t.id === editing.value?.topic_id)
+);
 
 function brigadeName(id) {
   return brigades.value.find((b) => b.id === id)?.name || id;
@@ -420,7 +425,7 @@ onMounted(async () => {
   const [me, b, t] = await Promise.all([
     http.get("/api/admin/me"),
     http.get("/api/admin/brigades"),
-    http.get("/api/admin/training-topics"),
+    http.get("/api/admin/training-topics", { params: { include_inactive: true } }),
   ]);
   currentAdmin.value = me.data;
   brigades.value = b.data;

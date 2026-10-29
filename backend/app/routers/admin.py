@@ -1032,10 +1032,17 @@ def patch_training(
     data = body.model_dump(exclude_unset=True)
     if not data:
         return sess
-    if "topic_id" in data and data["topic_id"] and not db.query(TrainingTopicOption).filter(
-        TrainingTopicOption.id == data["topic_id"],
-        TrainingTopicOption.is_active.is_(True),
-    ).first():
+    if (
+        "topic_id" in data
+        and data["topic_id"]
+        and data["topic_id"] != sess.topic_id
+        and not db.query(TrainingTopicOption)
+        .filter(
+            TrainingTopicOption.id == data["topic_id"],
+            TrainingTopicOption.is_active.is_(True),
+        )
+        .first()
+    ):
         raise HTTPException(400, "培训主题不存在或已停用")
     target_brigade_id = data.get("brigade_id")
     if target_brigade_id is not None:

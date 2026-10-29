@@ -73,7 +73,7 @@
         </el-form-item>
         <el-form-item label="培训主题">
           <el-select v-model="trainingEditForm.topic_id" clearable style="width: 100%">
-            <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
+            <el-option v-for="t in editTopicOptions" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="培训单位" required>
@@ -215,6 +215,9 @@ const trainingEditForm = reactive({
   remark: "",
 });
 const canEditTraining = computed(() => currentAdmin.value?.role === "detachment");
+const editTopicOptions = computed(() =>
+  topics.value.filter((t) => t.is_active !== false || t.id === editingTraining.value?.topic_id)
+);
 
 function params(extra = {}) {
   const p = { ...extra };
@@ -232,7 +235,7 @@ function fmt(v) {
 
 async function loadMeta() {
   const [topicRes, jobRes, brigadeRes] = await Promise.all([
-    http.get("/api/admin/training-topics"),
+    http.get("/api/admin/training-topics", { params: { include_inactive: true } }),
     http.get("/api/admin/job-titles"),
     http.get("/api/admin/brigades"),
   ]);
