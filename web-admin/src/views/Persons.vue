@@ -1,143 +1,326 @@
 <template>
-  <div class="page">
-    <div class="head">
-      <div>
-        <h2>人员管理</h2>
-        <p class="tip">管理已通过微信登录并完成注册的人员，可调整手机号、所属单位和管理员身份。</p>
+  <div>
+    <div class="page-head">
+      <div class="page-head__main">
+        <div class="eyebrow">人员档案</div>
+        <h1 class="page-title">注册人员</h1>
+        <p class="page-desc">管理已通过微信登录并完成注册的人员，可调整手机号、所属单位与管理员身份</p>
       </div>
-      <el-button type="primary" :loading="loading" @click="load">刷新</el-button>
+      <div class="page-actions">
+        <button class="btn btn--ghost" :disabled="loading" @click="load(true)">
+          <AppIcon name="refresh" :size="15" />{{ loading ? "刷新中…" : "刷新" }}
+        </button>
+      </div>
     </div>
 
-    <div class="filters">
-      <el-input
-        v-model="keyword"
-        clearable
-        placeholder="搜索姓名、手机号、单位"
-        class="search"
-        @keyup.enter="load(true)"
-        @clear="load(true)"
-      />
-      <el-select v-model="filterDistrictId" clearable placeholder="区县" class="filter" @change="onFilterDistrictChange">
-        <el-option v-for="d in districtFilterOptions" :key="d.id" :label="d.name" :value="d.id" />
-      </el-select>
-      <el-select
-        v-model="filterOrganizationId"
-        clearable
-        filterable
-        placeholder="单位"
-        class="filter-org"
-        :disabled="!filterDistrictId"
-        @change="load(true)"
-      >
-        <el-option v-for="o in filterOrgs" :key="o.id" :label="o.name" :value="o.id" />
-      </el-select>
-      <el-button type="primary" @click="load(true)">查询</el-button>
-    </div>
-
-    <el-table :data="rows" border stripe v-loading="loading" style="width: 100%">
-      <el-table-column label="姓名" width="120">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openPersonTrainings(row)">{{ row.name || "—" }}</el-button>
-        </template>
-      </el-table-column>
-      <el-table-column prop="phone" label="手机号" width="130" />
-      <el-table-column prop="district_name" label="区县" width="130" />
-      <el-table-column prop="organization_name" label="所属单位" min-width="220" />
-      <el-table-column prop="job_title" label="职务岗位" min-width="130">
-        <template #default="{ row }">{{ row.job_title || "—" }}</template>
-      </el-table-column>
-      <el-table-column label="微信绑定" width="110">
-        <template #default="{ row }">
-          <el-tag :type="row.wechat_bound ? 'success' : 'info'" size="small">
-            {{ row.wechat_bound ? "已绑定" : "未绑定" }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="管理员" width="160">
-        <template #default="{ row }">
-          <el-tag v-if="row.is_admin" type="success">
-            {{ row.admin_role === "detachment" ? "支队管理员" : "大队管理员" }}
-          </el-tag>
-          <el-tag v-else type="info">普通人员</el-tag>
-          <div v-if="row.admin_brigade_name" class="sub">{{ row.admin_brigade_name }}</div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="created_at" label="注册时间" width="150">
-        <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="210" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" :disabled="!canEdit" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" :disabled="currentAdmin?.role !== 'detachment'" @click="unbindPerson(row)">解除绑定</el-button>
-          <el-button link type="danger" :disabled="!canEdit" @click="removePerson(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="page"
-        v-model:page-size="pageSize"
-        :total="total"
-        :page-sizes="[20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @current-change="changePage"
-        @size-change="changePageSize"
-      />
-    </div>
-
-    <el-dialog v-model="editVisible" title="编辑人员信息" width="560px" destroy-on-close>
-      <el-form :model="form" label-width="96px">
-        <el-form-item label="姓名" required>
-          <el-input v-model="form.name" maxlength="64" />
-        </el-form-item>
-        <el-form-item label="手机号" required>
-          <el-input v-model="form.phone" maxlength="11" />
-        </el-form-item>
-        <el-form-item label="区县" required>
-          <el-select v-model="form.district_id" style="width: 100%" @change="onEditDistrictChange">
-            <el-option v-for="d in districts" :key="d.id" :label="d.name" :value="d.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="所属单位" required>
-          <el-select v-model="form.organization_id" filterable style="width: 100%" :disabled="!form.district_id">
-            <el-option v-for="o in editOrgs" :key="o.id" :label="o.name" :value="o.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="职务岗位">
-          <el-select v-model="form.job_title" clearable filterable placeholder="请选择职务岗位" style="width: 100%">
-            <el-option v-for="item in jobTitleSelectOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="currentAdmin?.role === 'detachment'" label="管理员">
-          <el-switch
-            v-model="form.is_admin"
-            active-text="设为管理员"
-            inactive-text="普通人员"
+    <div class="filterbar">
+      <div class="field" style="flex: 1; min-width: 240px">
+        <label for="f-person-kw">关键词</label>
+        <div class="search-inline">
+          <AppIcon name="search" :size="15" />
+          <input
+            id="f-person-kw"
+            v-model="keyword"
+            class="input"
+            placeholder="姓名 / 手机号 / 单位"
+            @keyup.enter="load(true)"
           />
-          <div class="form-tip">设为管理员后，默认按所属单位的大队赋予小程序管理权限。</div>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submitEdit">保存</el-button>
-      </template>
-    </el-dialog>
+        </div>
+      </div>
+      <div class="field" style="width: 170px">
+        <label for="f-person-district">区县</label>
+        <el-select
+          id="f-person-district"
+          v-model="filterDistrictId"
+          clearable
+          placeholder="全部区县"
+          style="width: 100%"
+          @change="onFilterDistrictChange"
+        >
+          <el-option v-for="d in districtFilterOptions" :key="d.id" :label="d.name" :value="d.id" />
+        </el-select>
+      </div>
+      <div class="field" style="width: 220px">
+        <label for="f-person-org">所属单位</label>
+        <el-select
+          id="f-person-org"
+          v-model="filterOrganizationId"
+          clearable
+          filterable
+          placeholder="全部单位"
+          style="width: 100%"
+          :disabled="!filterDistrictId"
+          @change="load(true)"
+        >
+          <el-option v-for="o in filterOrgs" :key="o.id" :label="o.name" :value="o.id" />
+        </el-select>
+      </div>
+      <div style="display: flex; gap: 8px; margin-left: auto">
+        <button class="btn btn--primary" @click="load(true)">查询</button>
+        <button class="btn btn--ghost" @click="resetFilters">重置</button>
+      </div>
+    </div>
 
-    <el-dialog v-model="trainingVisible" :title="`${trainingPersonName}的培训记录`" width="760px" destroy-on-close>
-      <el-table :data="trainingRows" border stripe v-loading="trainingLoading" size="small">
-        <el-table-column prop="title" label="培训名称" min-width="180" />
-        <el-table-column label="培训时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.start_at) }}</template>
-        </el-table-column>
-        <el-table-column prop="organization_name" label="参训单位" min-width="180" />
-        <el-table-column prop="district_name" label="区县" width="120" />
-        <el-table-column prop="duration_minutes" label="时长(分)" width="100" />
-        <el-table-column prop="location" label="地点" min-width="120" />
-      </el-table>
-      <template #footer>
-        <el-button @click="trainingVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
+    <div v-if="hasValue(keyword) || hasValue(filterDistrictId) || hasValue(filterOrganizationId)" class="chips">
+      <span v-if="hasValue(keyword)" class="chip">
+        <b>关键词</b>{{ keyword }}
+        <button type="button" aria-label="移除关键词" @click="clearKeyword"><AppIcon name="x" :size="11" /></button>
+      </span>
+      <span v-if="hasValue(filterDistrictId)" class="chip">
+        <b>区县</b>{{ districtName(filterDistrictId) }}
+        <button type="button" aria-label="移除区县筛选" @click="clearDistrict"><AppIcon name="x" :size="11" /></button>
+      </span>
+      <span v-if="hasValue(filterOrganizationId)" class="chip">
+        <b>单位</b>{{ organizationName(filterOrganizationId) }}
+        <button type="button" aria-label="移除单位筛选" @click="clearOrganization"><AppIcon name="x" :size="11" /></button>
+      </span>
+      <button class="chips__reset" type="button" @click="resetFilters">清除全部</button>
+    </div>
+
+    <section class="card">
+      <div class="card__head">
+        <h3>人员清单</h3>
+        <span class="sub">共 {{ total }} 人</span>
+        <div class="grow"></div>
+        <span class="badge badge--ok">实名注册</span>
+      </div>
+
+      <div v-loading="loading" class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th style="width: 110px">姓名</th>
+              <th style="width: 130px">手机号</th>
+              <th style="width: 120px">区县</th>
+              <th>所属单位</th>
+              <th style="width: 120px">职务岗位</th>
+              <th style="width: 100px">微信绑定</th>
+              <th style="width: 150px">管理员</th>
+              <th style="width: 140px">注册时间</th>
+              <th class="col-actions" style="width: 150px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="row.person_id">
+              <td>
+                <button class="cell-main linkbtn" style="padding: 0" @click="openPersonTrainings(row)">
+                  {{ row.name || "—" }}
+                </button>
+              </td>
+              <td class="num">{{ row.phone || "—" }}</td>
+              <td>{{ row.district_name || "—" }}</td>
+              <td>{{ row.organization_name || "—" }}</td>
+              <td>{{ row.job_title || "—" }}</td>
+              <td>
+                <span class="badge" :class="row.wechat_bound ? 'badge--ok' : 'badge--off'">
+                  {{ row.wechat_bound ? "已绑定" : "未绑定" }}
+                </span>
+              </td>
+              <td>
+                <span v-if="row.is_admin" class="badge" :class="row.admin_role === 'detachment' ? 'badge--live' : 'badge--ok'">
+                  {{ row.admin_role === "detachment" ? "支队管理员" : "大队管理员" }}
+                </span>
+                <span v-else class="badge badge--off">普通人员</span>
+                <span v-if="row.admin_brigade_name" class="cell-sub">{{ row.admin_brigade_name }}</span>
+              </td>
+              <td class="num">{{ formatTime(row.created_at) }}</td>
+              <td class="col-actions">
+                <div class="rowact" style="display: inline-flex; align-items: center; gap: 2px">
+                  <button class="linkbtn" @click="openPersonTrainings(row)">查看</button>
+                  <button class="linkbtn" :disabled="!canEdit" @click="openEdit(row)">编辑</button>
+                  <el-dropdown trigger="click" @command="(cmd) => onRowCommand(cmd, row)">
+                    <button class="iconbtn" aria-label="更多操作"><AppIcon name="more" :size="16" /></button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item
+                          v-if="currentAdmin?.role === 'detachment'"
+                          command="unbind"
+                          :disabled="!row.wechat_bound"
+                        >
+                          解除微信绑定
+                        </el-dropdown-item>
+                        <el-dropdown-item command="delete" :disabled="!canEdit" divided class="is-danger">
+                          删除人员
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!rows.length && !loading">
+              <td colspan="9">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="users" :size="26" /></div>
+                  <h4>没有找到注册人员</h4>
+                  <p>
+                    {{
+                      hasValue(keyword) || hasValue(filterDistrictId) || hasValue(filterOrganizationId)
+                        ? "换个关键词、区县或单位试试，也可以清除筛选查看全部。"
+                        : "还没有人员通过小程序完成注册，分享小程序入口后这里会自动出现。"
+                    }}
+                  </p>
+                  <button
+                    v-if="hasValue(keyword) || hasValue(filterDistrictId) || hasValue(filterOrganizationId)"
+                    class="btn btn--ghost btn--sm"
+                    @click="resetFilters"
+                  >
+                    清除筛选
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <span>共 {{ total }} 人 · 每页 {{ pageSize }} 条</span>
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[20, 50, 100]"
+          layout="sizes, prev, pager, next, jumper"
+          background
+          @current-change="changePage"
+          @size-change="changePageSize"
+        />
+      </div>
+    </section>
+
+    <!-- 查看培训记录 -->
+    <el-drawer v-model="trainingVisible" size="640px" :with-header="false" destroy-on-close class="form-drawer">
+      <div class="drawer-shell">
+        <div class="drawer__head">
+          <div class="grow">
+            <h3>{{ trainingPersonName }}的培训记录</h3>
+            <p>含该人员在各单位的参训明细，按时间倒序</p>
+          </div>
+          <button class="iconbtn" aria-label="关闭" @click="trainingVisible = false">
+            <AppIcon name="x" :size="16" />
+          </button>
+        </div>
+        <div class="drawer__body" style="padding: 0">
+          <div v-loading="trainingLoading" class="tablewrap">
+            <table class="tb">
+              <thead>
+                <tr>
+                  <th>培训名称</th>
+                  <th style="width: 130px">培训时间</th>
+                  <th style="width: 150px">参训单位</th>
+                  <th style="width: 90px">区县</th>
+                  <th class="num" style="width: 80px">时长</th>
+                  <th style="width: 110px">地点</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, idx) in trainingRows" :key="idx">
+                  <td>{{ item.title }}</td>
+                  <td class="num">{{ formatTime(item.start_at) }}</td>
+                  <td>{{ item.organization_name || "—" }}</td>
+                  <td>{{ item.district_name || "—" }}</td>
+                  <td class="num">{{ item.duration_minutes }} 分</td>
+                  <td>{{ item.location || "—" }}</td>
+                </tr>
+                <tr v-if="!trainingRows.length && !trainingLoading">
+                  <td colspan="6">
+                    <div class="empty">
+                      <div class="empty__art"><AppIcon name="calendar" :size="26" /></div>
+                      <h4>还没有培训记录</h4>
+                      <p>该人员尚未参加过培训，登记并签到后这里会显示明细。</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="drawer__foot">
+          <div class="grow"></div>
+          <button class="btn btn--ghost" @click="trainingVisible = false">关闭</button>
+        </div>
+      </div>
+    </el-drawer>
+
+    <!-- 编辑人员 -->
+    <el-drawer v-model="editVisible" size="520px" :with-header="false" destroy-on-close class="form-drawer">
+      <div class="drawer-shell">
+        <div class="drawer__head">
+          <div class="grow">
+            <h3>编辑人员信息</h3>
+            <p>保存后立即生效，该人员的签到与培训记录保持关联</p>
+          </div>
+          <button class="iconbtn" aria-label="关闭" @click="editVisible = false">
+            <AppIcon name="x" :size="16" />
+          </button>
+        </div>
+        <div class="drawer__body">
+          <el-form :model="form" label-position="top">
+            <div class="fieldset">
+              <div class="fieldset__title">身份信息</div>
+              <div class="formgrid">
+                <div class="field">
+                  <label>姓名<span class="req">*</span></label>
+                  <el-input v-model="form.name" maxlength="64" />
+                </div>
+                <div class="field">
+                  <label>手机号<span class="req">*</span></label>
+                  <el-input v-model="form.phone" maxlength="11" />
+                </div>
+              </div>
+            </div>
+
+            <div class="fieldset">
+              <div class="fieldset__title">归属信息</div>
+              <div class="formgrid">
+                <div class="field">
+                  <label>区县<span class="req">*</span></label>
+                  <el-select v-model="form.district_id" style="width: 100%" @change="onEditDistrictChange">
+                    <el-option v-for="d in districts" :key="d.id" :label="d.name" :value="d.id" />
+                  </el-select>
+                </div>
+                <div class="field">
+                  <label>所属单位<span class="req">*</span></label>
+                  <el-select
+                    v-model="form.organization_id"
+                    filterable
+                    style="width: 100%"
+                    :disabled="!form.district_id"
+                    placeholder="请先选择区县"
+                  >
+                    <el-option v-for="o in editOrgs" :key="o.id" :label="o.name" :value="o.id" />
+                  </el-select>
+                </div>
+                <div class="field span-2">
+                  <label>职务岗位</label>
+                  <el-select v-model="form.job_title" clearable filterable placeholder="请选择职务岗位" style="width: 100%">
+                    <el-option v-for="item in jobTitleSelectOptions" :key="item" :label="item" :value="item" />
+                  </el-select>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="currentAdmin?.role === 'detachment'" class="fieldset">
+              <div class="fieldset__title">权限设置</div>
+              <div class="field">
+                <label>管理员身份</label>
+                <el-switch v-model="form.is_admin" active-text="设为管理员" inactive-text="普通人员" />
+                <div class="hint">设为管理员后，默认按所属单位的大队赋予小程序管理权限。</div>
+              </div>
+            </div>
+          </el-form>
+        </div>
+        <div class="drawer__foot">
+          <span class="hint" style="margin: 0">带 * 为必填项</span>
+          <div class="grow"></div>
+          <button class="btn btn--ghost" @click="editVisible = false">取消</button>
+          <button class="btn btn--primary" :disabled="saving" @click="submitEdit">
+            {{ saving ? "保存中…" : "保存" }}
+          </button>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -145,6 +328,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import http from "../api/http";
+import AppIcon from "../components/AppIcon.vue";
 
 const rows = ref([]);
 const districts = ref([]);
@@ -185,6 +369,18 @@ const jobTitleSelectOptions = computed(() => {
 function formatTime(iso) {
   if (!iso) return "—";
   return String(iso).replace("T", " ").slice(0, 16);
+}
+
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== "";
+}
+
+function districtName(id) {
+  return districtFilterOptions.value.find((d) => d.id === Number(id))?.name || "—";
+}
+
+function organizationName(id) {
+  return filterOrgs.value.find((o) => o.id === Number(id))?.name || "—";
 }
 
 function errorMessage(e, fallback) {
@@ -230,6 +426,31 @@ async function load(resetPage = false) {
   }
 }
 
+function clearKeyword() {
+  keyword.value = "";
+  load(true);
+}
+
+function clearDistrict() {
+  filterDistrictId.value = undefined;
+  filterOrganizationId.value = undefined;
+  filterOrgs.value = [];
+  load(true);
+}
+
+function clearOrganization() {
+  filterOrganizationId.value = undefined;
+  load(true);
+}
+
+function resetFilters() {
+  keyword.value = "";
+  filterDistrictId.value = undefined;
+  filterOrganizationId.value = undefined;
+  filterOrgs.value = [];
+  load(true);
+}
+
 function changePageSize(size) {
   pageSize.value = size;
   load(true);
@@ -238,6 +459,11 @@ function changePageSize(size) {
 function changePage(nextPage) {
   page.value = nextPage;
   load();
+}
+
+function onRowCommand(cmd, row) {
+  if (cmd === "unbind") unbindPerson(row);
+  else if (cmd === "delete") removePerson(row);
 }
 
 async function openEdit(row) {
@@ -345,55 +571,20 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page {
-  background: #fff;
-  padding: 20px 24px;
-  border-radius: 8px;
-  min-height: 400px;
-}
-.head {
+.drawer-shell {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
+  flex-direction: column;
+  height: 100%;
 }
-h2 {
-  margin: 0 0 8px;
-  font-size: 1.25rem;
+:deep(.form-drawer .el-drawer__body) {
+  padding: 0;
+  overflow: hidden;
 }
-.tip {
-  color: #888;
-  font-size: 13px;
-  margin: 0 0 16px;
+:deep(.filterbar .el-select__wrapper) {
+  min-height: 36px;
 }
-.filters {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-.search {
-  width: 260px;
-}
-.filter {
-  width: 150px;
-}
-.filter-org {
-  width: 260px;
-}
-.sub {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #888;
-}
-.pagination {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-.form-tip {
-  margin-top: 6px;
-  color: #888;
-  font-size: 12px;
-  line-height: 1.5;
+.linkbtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>

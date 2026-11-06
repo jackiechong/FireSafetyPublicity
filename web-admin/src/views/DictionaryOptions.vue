@@ -1,95 +1,253 @@
 <template>
-  <div class="page">
-    <h2>字典配置</h2>
-    <p class="tip">支队管理员可维护小程序注册时使用的单位类型、职务/岗位，以及培训前选择的主题分类。</p>
+  <div>
+    <div class="page-head">
+      <div class="page-head__main">
+        <div class="eyebrow">基础配置</div>
+        <h1 class="page-title">字典配置</h1>
+        <p class="page-desc">维护小程序注册与培训登记使用的单位类型、职务岗位和培训主题</p>
+      </div>
+    </div>
 
-    <section class="panel">
-      <div class="panel-head">
+    <section class="card">
+      <div class="card__head">
         <h3>单位类型</h3>
-        <el-button type="primary" @click="openOrgType()">新增类型</el-button>
+        <span class="sub">共 {{ orgTypes.length }} 项</span>
+        <div class="grow"></div>
+        <button class="btn btn--primary btn--sm" @click="openOrgType()">
+          <AppIcon name="plus" :size="13" />新增类型
+        </button>
       </div>
-      <el-table :data="orgTypes" border stripe v-loading="loading">
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="code" label="编码" />
-        <el-table-column prop="sort_order" label="排序" width="90" />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? "启用" : "停用" }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openOrgType(row)">编辑</el-button>
-            <el-button link type="danger" @click="removeOrgType(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div v-loading="loading" class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th style="width: 180px">编码</th>
+              <th class="num" style="width: 84px">排序</th>
+              <th style="width: 92px">状态</th>
+              <th class="col-actions" style="width: 120px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in orgTypes" :key="row.id">
+              <td class="cell-main">{{ row.name }}</td>
+              <td><span class="code">{{ row.code }}</span></td>
+              <td class="num">{{ row.sort_order }}</td>
+              <td>
+                <span class="badge" :class="row.is_active ? 'badge--ok' : 'badge--off'">
+                  {{ row.is_active ? "启用" : "停用" }}
+                </span>
+              </td>
+              <td class="col-actions">
+                <div class="rowact">
+                  <button class="linkbtn" @click="openOrgType(row)">编辑</button>
+                  <el-dropdown trigger="click" @command="(cmd) => cmd === 'delete' && removeOrgType(row)">
+                    <button class="iconbtn" aria-label="更多操作"><AppIcon name="more" :size="16" /></button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="delete" class="is-danger">删除</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!orgTypes.length && !loading">
+              <td colspan="5">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="building" :size="26" /></div>
+                  <h4>还没有单位类型</h4>
+                  <p>新增后，小程序注册页的单位类型下拉即可选择。</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
+    <section class="card">
+      <div class="card__head">
         <h3>培训主题</h3>
-        <el-button type="primary" @click="openTopic()">新增主题</el-button>
+        <span class="sub">共 {{ topics.length }} 项</span>
+        <div class="grow"></div>
+        <button class="btn btn--primary btn--sm" @click="openTopic()">
+          <AppIcon name="plus" :size="13" />新增主题
+        </button>
       </div>
-      <el-table :data="topics" border stripe v-loading="loading">
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="sort_order" label="排序" width="90" />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? "启用" : "停用" }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openTopic(row)">编辑</el-button>
-            <el-button link type="danger" @click="removeTopic(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div v-loading="loading" class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th class="num" style="width: 84px">排序</th>
+              <th style="width: 92px">状态</th>
+              <th class="col-actions" style="width: 120px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in topics" :key="row.id">
+              <td class="cell-main">{{ row.name }}</td>
+              <td class="num">{{ row.sort_order }}</td>
+              <td>
+                <span class="badge" :class="row.is_active ? 'badge--ok' : 'badge--off'">
+                  {{ row.is_active ? "启用" : "停用" }}
+                </span>
+              </td>
+              <td class="col-actions">
+                <div class="rowact">
+                  <button class="linkbtn" @click="openTopic(row)">编辑</button>
+                  <el-dropdown trigger="click" @command="(cmd) => cmd === 'delete' && removeTopic(row)">
+                    <button class="iconbtn" aria-label="更多操作"><AppIcon name="more" :size="16" /></button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="delete" class="is-danger">删除</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!topics.length && !loading">
+              <td colspan="4">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="list" :size="26" /></div>
+                  <h4>还没有培训主题</h4>
+                  <p>培训主题用于登记培训时归类，可先在后台补充常用主题。</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h3>职务/岗位</h3>
-        <el-button type="primary" @click="openJobTitle()">新增职务</el-button>
+    <section class="card">
+      <div class="card__head">
+        <h3>职务 / 岗位</h3>
+        <span class="sub">共 {{ jobTitles.length }} 项</span>
+        <div class="grow"></div>
+        <button class="btn btn--primary btn--sm" @click="openJobTitle()">
+          <AppIcon name="plus" :size="13" />新增职务
+        </button>
       </div>
-      <el-table :data="jobTitles" border stripe v-loading="loading">
-        <el-table-column prop="name" label="名称" />
-        <el-table-column prop="sort_order" label="排序" width="90" />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? "启用" : "停用" }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openJobTitle(row)">编辑</el-button>
-            <el-button link type="danger" @click="removeJobTitle(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div v-loading="loading" class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th class="num" style="width: 84px">排序</th>
+              <th style="width: 92px">状态</th>
+              <th class="col-actions" style="width: 120px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in jobTitles" :key="row.id">
+              <td class="cell-main">{{ row.name }}</td>
+              <td class="num">{{ row.sort_order }}</td>
+              <td>
+                <span class="badge" :class="row.is_active ? 'badge--ok' : 'badge--off'">
+                  {{ row.is_active ? "启用" : "停用" }}
+                </span>
+              </td>
+              <td class="col-actions">
+                <div class="rowact">
+                  <button class="linkbtn" @click="openJobTitle(row)">编辑</button>
+                  <el-dropdown trigger="click" @command="(cmd) => cmd === 'delete' && removeJobTitle(row)">
+                    <button class="iconbtn" aria-label="更多操作"><AppIcon name="more" :size="16" /></button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="delete" class="is-danger">删除</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!jobTitles.length && !loading">
+              <td colspan="4">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="users" :size="26" /></div>
+                  <h4>还没有职务 / 岗位</h4>
+                  <p>新增后，小程序完善人员信息时可直接选择。</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="420px" destroy-on-close>
-      <el-form label-width="80px">
-        <el-form-item label="名称" required>
-          <el-input v-model="form.name" maxlength="64" />
-        </el-form-item>
-        <el-form-item v-if="kind === 'org'" label="编码">
-          <el-input v-model="form.code" maxlength="64" :disabled="!!editing" placeholder="新增时可不填，系统自动生成" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="form.sort_order" :min="0" :max="9999" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-switch v-model="form.is_active" active-text="启用" inactive-text="停用" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">保存</el-button>
-      </template>
-    </el-dialog>
+    <el-drawer v-model="dialogVisible" size="520px" :with-header="false" destroy-on-close class="form-drawer">
+      <div class="drawer-shell">
+        <div class="drawer__head">
+          <div class="grow">
+            <h3>{{ dialogTitle }}</h3>
+            <p>
+              {{
+                kind === "org"
+                  ? "单位类型决定小程序注册时可选的组织性质"
+                  : kind === "topic"
+                    ? "培训主题用于登记培训时分类归档"
+                    : "职务 / 岗位用于完善人员信息"
+              }}
+            </p>
+          </div>
+          <button class="iconbtn" aria-label="关闭" @click="dialogVisible = false">
+            <AppIcon name="x" :size="16" />
+          </button>
+        </div>
+        <div class="drawer__body">
+          <el-form :model="form" label-position="top">
+            <div class="fieldset">
+              <div class="fieldset__title">基本信息</div>
+              <div class="formgrid">
+                <div class="field span-2">
+                  <label>名称<span class="req">*</span></label>
+                  <el-input
+                    v-model="form.name"
+                    maxlength="64"
+                    :placeholder="
+                      kind === 'org' ? '如：应急管理部门' : kind === 'topic' ? '如：消防器材使用培训' : '如：消防安全管理人'
+                    "
+                  />
+                </div>
+                <div v-if="kind === 'org'" class="field span-2">
+                  <label>编码</label>
+                  <el-input v-model="form.code" maxlength="64" :disabled="!!editing" placeholder="新增时可不填，系统自动生成" />
+                  <div class="hint">编码用于数据标识，保存后不可修改</div>
+                </div>
+                <div class="field">
+                  <label>排序</label>
+                  <el-input-number
+                    v-model="form.sort_order"
+                    :min="0"
+                    :max="9999"
+                    controls-position="right"
+                    style="width: 100%"
+                  />
+                </div>
+                <div class="field">
+                  <label>状态</label>
+                  <div class="status-line">
+                    <el-switch v-model="form.is_active" />
+                    <span class="hint" style="margin: 0">{{ form.is_active ? "启用" : "停用" }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-form>
+        </div>
+        <div class="drawer__foot">
+          <span class="hint" style="margin: 0">删除已被引用的字典项时，系统会自动改为停用</span>
+          <div class="grow"></div>
+          <button class="btn btn--ghost" @click="dialogVisible = false">取消</button>
+          <button class="btn btn--primary" :disabled="saving" @click="submit">
+            {{ saving ? "保存中…" : "保存" }}
+          </button>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -97,6 +255,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import http from "../api/http";
+import AppIcon from "../components/AppIcon.vue";
 
 const loading = ref(false);
 const saving = ref(false);
@@ -215,31 +374,34 @@ onMounted(load);
 </script>
 
 <style scoped>
-.page {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px 24px;
-}
-h2 {
-  margin: 0 0 8px;
-  font-size: 1.25rem;
-}
-.tip {
-  color: #888;
-  font-size: 13px;
-  margin: 0 0 16px;
-}
-.panel {
-  margin-top: 18px;
-}
-.panel-head {
-  align-items: center;
+.drawer-shell {
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
+  flex-direction: column;
+  height: 100%;
 }
-h3 {
-  margin: 0;
-  font-size: 1rem;
+:deep(.form-drawer .el-drawer__body) {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card + .card {
+  margin-top: var(--s4);
+}
+
+.code {
+  font-family: var(--font-num);
+  font-size: var(--fs-12);
+  color: var(--ink-500);
+}
+.rowact {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
 }
 </style>

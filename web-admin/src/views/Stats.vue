@@ -1,20 +1,30 @@
 <template>
-  <div class="page">
-    <h2>统计数据</h2>
-    <p class="tip">
-      默认查看全市年度培训数据；可按年、月、日及培训主办单位筛选，场次、人数和时长随选择同步变化。
-    </p>
+  <div>
+    <div class="page-head">
+      <div class="page-head__main">
+        <div class="eyebrow">统计分析</div>
+        <h1 class="page-title">培训统计分析</h1>
+        <p class="page-desc">{{ periodLabelText }} · {{ brigadeSelectedName }} · 场次、人数与时长随统计口径同步更新</p>
+      </div>
+      <div class="page-actions">
+        <span class="badge badge--done">口径：{{ rankMetricLabel() }}</span>
+      </div>
+    </div>
 
-    <el-form :inline="true" class="period-toolbar">
-      <el-form-item label="统计周期">
-        <el-radio-group v-model="periodMode" @change="onPeriodModeChange">
-          <el-radio-button label="year">年</el-radio-button>
-          <el-radio-button label="month">月</el-radio-button>
-          <el-radio-button label="date">日</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item>
+    <div class="filterbar">
+      <div class="field">
+        <label>统计周期</label>
+        <div class="seg">
+          <button type="button" :class="{ 'is-on': periodMode === 'year' }" @click="setPeriodMode('year')">年</button>
+          <button type="button" :class="{ 'is-on': periodMode === 'month' }" @click="setPeriodMode('month')">月</button>
+          <button type="button" :class="{ 'is-on': periodMode === 'date' }" @click="setPeriodMode('date')">日</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-period">时间范围</label>
         <el-date-picker
+          id="f-period"
           v-model="periodValue"
           :type="periodMode"
           :clearable="false"
@@ -24,115 +34,165 @@
           style="width: 170px"
           @change="onPeriodChange"
         />
-      </el-form-item>
-    </el-form>
+      </div>
 
-    <div class="search-bar">
-      <el-autocomplete
-        v-model="searchQ"
-        :fetch-suggestions="querySearch"
-        clearable
-        highlight-first-item
-        :debounce="250"
-        popper-class="stats-search-suggest-popper"
-        placeholder="搜索单位名称，或人员姓名 / 手机号"
-        style="width: min(100%, 520px)"
-        value-key="value"
-        fit-input-width
-        @select="handleSearchSelect"
-      >
-        <template #default="{ item }">
-          <div class="ac-item">
-            <el-tag size="small" :type="item.kind === 'organization' ? 'primary' : 'success'" effect="plain">
-              {{ item.kind === "organization" ? "单位" : "人员" }}
-            </el-tag>
-            <span class="ac-title">{{ item.title }}</span>
-            <div class="ac-sub">{{ item.subtitle }}</div>
-          </div>
-        </template>
-      </el-autocomplete>
-    </div>
-
-    <el-row :gutter="16" class="summary-row">
-      <el-col :xs="12" :sm="6">
-        <el-card shadow="hover" class="sum-card">
-          <div class="sum-label">{{ brigadeFilter ? "当前主办单位培训时长" : "全市培训总时长" }}</div>
-          <div class="sum-value">{{ displayTotalMinutesLabel }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="6">
-        <el-card shadow="hover" class="sum-card clickable" @click="openBrigadeTrainings">
-          <div class="sum-label">{{ brigadeFilter ? "当前主办单位培训场次" : "全市培训场次" }}</div>
-          <div class="sum-value">{{ displaySessionCount }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="6">
-        <el-card shadow="hover" class="sum-card">
-          <div class="sum-label">{{ brigadeFilter ? "当前主办单位培训人数" : "全市培训人数" }}</div>
-          <div class="sum-value">{{ displayPersonCount }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="12" :sm="6">
-        <el-card shadow="hover" class="sum-card">
-          <div class="sum-label">有培训记录的主办单位</div>
-          <div class="sum-value">{{ displayActiveBrigadeCount }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-form :inline="true" class="toolbar">
-      <el-form-item label="排行依据">
-        <el-radio-group v-model="rankMetric" @change="renderChart">
-          <el-radio-button label="duration">培训时长</el-radio-button>
-          <el-radio-button label="person">培训人次</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item label="培训主办单位">
+      <div class="field">
+        <label for="f-brigade">培训主办单位</label>
         <el-select
+          id="f-brigade"
           v-model="brigadeFilter"
           clearable
-          placeholder="不选：查看全市主办单位对比"
-          style="width: 220px"
+          placeholder="不选：全市对比"
+          style="width: 200px"
           @change="onBrigadeChange"
         >
           <el-option v-for="b in brigadeOptions" :key="b.id" :label="b.name" :value="b.id" />
         </el-select>
-      </el-form-item>
-      <el-form-item v-if="false" label="单位">
-        <el-select
-          v-model="orgFilter"
+      </div>
+
+      <div class="field">
+        <label>排行依据</label>
+        <div class="seg">
+          <button type="button" :class="{ 'is-on': rankMetric === 'duration' }" @click="setRankMetric('duration')">时长</button>
+          <button type="button" :class="{ 'is-on': rankMetric === 'person' }" @click="setRankMetric('person')">人次</button>
+        </div>
+      </div>
+
+      <div class="field" style="flex: 1; min-width: 240px">
+        <label for="f-q">单位 / 人员</label>
+        <el-autocomplete
+          id="f-q"
+          v-model="searchQ"
+          :fetch-suggestions="querySearch"
           clearable
-          filterable
-          placeholder="选择单位查看参训人员"
-          style="width: min(100%, 360px)"
-          @change="onOrgChange"
+          highlight-first-item
+          :debounce="250"
+          popper-class="stats-search-suggest-popper"
+          placeholder="搜索单位名称，或人员姓名 / 手机号"
+          style="width: 100%"
+          value-key="value"
+          fit-input-width
+          @select="handleSearchSelect"
         >
-          <el-option
-            v-for="o in orgsInDistrict"
-            :key="o.organization_id"
-            :label="`${o.organization_name}（${formatTrainingHours(o.total_minutes)} · ${o.person_count}人）`"
-            :value="o.organization_id"
-          />
-        </el-select>
-      </el-form-item>
-    </el-form>
+          <template #default="{ item }">
+            <div class="ac-item">
+              <span class="badge" :class="item.kind === 'organization' ? 'badge--live' : 'badge--ok'">
+                {{ item.kind === "organization" ? "单位" : "人员" }}
+              </span>
+              <span class="ac-title">{{ item.title }}</span>
+              <div class="ac-sub">{{ item.subtitle }}</div>
+            </div>
+          </template>
+        </el-autocomplete>
+      </div>
 
-    <div ref="chartRef" class="chart" />
+      <div style="display: flex; gap: 8px; margin-left: auto">
+        <button class="btn btn--primary" @click="onPeriodChange">查询</button>
+        <button class="btn btn--ghost" @click="resetFilters">重置</button>
+      </div>
+    </div>
 
-    <template v-if="brigadeFilter">
-      <h3 class="sub-title">当前主办单位培训场次（共 {{ displaySessionCount }} 场，{{ displayPersonCount }} 人）</h3>
-      <el-table :data="brigadeTrainingRows" border stripe v-loading="brigadeTrainingLoading" size="small" style="width: 100%">
-        <el-table-column type="index" label="#" width="55" />
-        <el-table-column prop="title" label="会议名称" min-width="220" />
-        <el-table-column label="开展时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.start_at) }}</template>
-        </el-table-column>
-        <el-table-column prop="person_count" label="培训人数" width="100" />
-        <el-table-column prop="topic_name" label="主题" min-width="120">
-          <template #default="{ row }">{{ row.topic_name || "未分类" }}</template>
-        </el-table-column>
-      </el-table>
-    </template>
+    <div v-if="brigadeFilter" class="chips">
+      <span class="chip">
+        <b>主办单位</b>{{ brigadeSelectedName }}
+        <button type="button" aria-label="移除主办单位条件" @click="clearBrigade">
+          <AppIcon name="x" :size="11" />
+        </button>
+      </span>
+      <span class="chip"><b>周期</b>{{ periodLabelText }}</span>
+      <button class="chips__reset" type="button" @click="resetFilters">清除全部</button>
+    </div>
+
+    <div class="grid grid--kpi" style="margin-bottom: 20px">
+      <article class="kpi kpi--accent">
+        <div class="kpi__label">
+          <AppIcon name="clock" :size="13" />{{ brigadeFilter ? "本单位培训时长" : "全市培训总时长" }}
+        </div>
+        <div class="kpi__value num">{{ (displayTotalMinutes / 60).toFixed(1) }}<small>小时</small></div>
+        <div class="kpi__foot"><span>{{ periodLabelText }}累计</span></div>
+      </article>
+
+      <article
+        class="kpi"
+        :class="{ 'kpi--click': brigadeFilter }"
+        :role="brigadeFilter ? 'button' : undefined"
+        :tabindex="brigadeFilter ? 0 : undefined"
+        @click="brigadeFilter && openBrigadeTrainings()"
+        @keydown.enter="brigadeFilter && openBrigadeTrainings()"
+      >
+        <div class="kpi__label"><AppIcon name="calendar" :size="13" />培训场次</div>
+        <div class="kpi__value num">{{ displaySessionCount }}<small>场</small></div>
+        <div class="kpi__foot">
+          <span>{{ brigadeFilter ? "点击查看场次明细" : `有记录单位 ${displayActiveBrigadeCount} 个` }}</span>
+        </div>
+      </article>
+
+      <article class="kpi">
+        <div class="kpi__label"><AppIcon name="users" :size="13" />培训人数</div>
+        <div class="kpi__value num">{{ nf(displayPersonCount) }}<small>人</small></div>
+        <div class="kpi__foot"><span>按参训签到记录累计</span></div>
+      </article>
+
+      <article class="kpi">
+        <div class="kpi__label"><AppIcon name="building" :size="13" />全市有记录主办单位</div>
+        <div class="kpi__value num">{{ displayActiveBrigadeCount }}<small>个</small></div>
+        <div class="kpi__foot"><span>共 {{ brigadeOptions.length }} 个主办单位</span></div>
+      </article>
+    </div>
+
+    <section class="card" style="margin-bottom: 20px">
+      <div class="card__head">
+        <h3>主办单位{{ rankMetric === "person" ? "人次" : "时长" }}排行</h3>
+        <span class="sub">{{ periodLabelText }}</span>
+        <div class="grow"></div>
+        <span v-if="brigadeFilter" class="badge badge--live">{{ brigadeSelectedName }}</span>
+        <span v-else class="badge badge--done">全市对比</span>
+      </div>
+      <div class="card__body" style="padding: 12px 16px 8px">
+        <div ref="chartRef" class="chart" />
+      </div>
+    </section>
+
+    <section v-if="brigadeFilter" class="card">
+      <div class="card__head">
+        <h3>当前主办单位培训场次</h3>
+        <span class="sub">共 {{ displaySessionCount }} 场 · {{ nf(displayPersonCount) }} 人</span>
+        <div class="grow"></div>
+        <span class="badge badge--live">{{ brigadeSelectedName }}</span>
+      </div>
+
+      <div v-loading="brigadeTrainingLoading" class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th style="width: 56px">#</th>
+              <th>会议名称</th>
+              <th style="width: 150px">开展时间</th>
+              <th class="num" style="width: 96px">培训人数</th>
+              <th style="width: 140px">主题</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in brigadeTrainingRows" :key="`${row.title}-${i}`">
+              <td class="num" style="color: var(--ink-400)">{{ i + 1 }}</td>
+              <td class="cell-main">{{ row.title }}</td>
+              <td class="num">{{ formatTime(row.start_at) }}</td>
+              <td class="num">{{ row.person_count }}</td>
+              <td>{{ row.topic_name || "未分类" }}</td>
+            </tr>
+            <tr v-if="!brigadeTrainingRows.length && !brigadeTrainingLoading">
+              <td colspan="5">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="calendar" :size="26" /></div>
+                  <h4>本期没有培训场次</h4>
+                  <p>切换统计周期或更换主办单位后重新查询。</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
     <el-dialog v-model="personRebindVisible" title="重新绑定人员身份" width="520px" destroy-on-close>
       <el-form label-width="90px">
@@ -162,25 +222,46 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="personRebindVisible = false">取消</el-button>
-        <el-button type="primary" :loading="personRebindSaving" @click="submitPersonRebind">保存</el-button>
+        <button class="btn btn--ghost" @click="personRebindVisible = false">取消</button>
+        <button class="btn btn--primary" :disabled="personRebindSaving" @click="submitPersonRebind">
+          {{ personRebindSaving ? "保存中…" : "保存" }}
+        </button>
       </template>
     </el-dialog>
 
     <el-dialog v-model="brigadeTrainingVisible" title="当前主办单位培训场次" width="760px" destroy-on-close>
-      <el-table :data="brigadeTrainingRows" border stripe v-loading="brigadeTrainingLoading" size="small">
-        <el-table-column prop="title" label="会议名称" min-width="200" />
-        <el-table-column label="开展时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.start_at) }}</template>
-        </el-table-column>
-        <el-table-column prop="person_count" label="人数" width="90" />
-        <el-table-column prop="topic_name" label="主题" min-width="120">
-          <template #default="{ row }">{{ row.topic_name || "未分类" }}</template>
-        </el-table-column>
-        <el-table-column prop="brigade_name" label="主办单位" min-width="130" />
-      </el-table>
+      <div v-loading="brigadeTrainingLoading">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th>会议名称</th>
+              <th style="width: 150px">开展时间</th>
+              <th class="num" style="width: 88px">人数</th>
+              <th style="width: 130px">主题</th>
+              <th style="width: 130px">主办单位</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in brigadeTrainingRows" :key="`dlg-${row.title}-${i}`">
+              <td class="cell-main">{{ row.title }}</td>
+              <td class="num">{{ formatTime(row.start_at) }}</td>
+              <td class="num">{{ row.person_count }}</td>
+              <td>{{ row.topic_name || "未分类" }}</td>
+              <td>{{ row.brigade_name || "—" }}</td>
+            </tr>
+            <tr v-if="!brigadeTrainingRows.length">
+              <td colspan="5">
+                <div class="empty" style="padding: 32px 20px">
+                  <h4>暂无场次</h4>
+                  <p>该主办单位在当前周期内没有培训记录。</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <template #footer>
-        <el-button @click="brigadeTrainingVisible = false">关闭</el-button>
+        <button class="btn btn--ghost" @click="brigadeTrainingVisible = false">关闭</button>
       </template>
     </el-dialog>
   </div>
@@ -191,6 +272,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import * as echarts from "echarts";
 import { ElMessage } from "element-plus";
 import http from "../api/http";
+import AppIcon from "../components/AppIcon.vue";
 import { formatMinutesAxisHours, formatTrainingHours } from "../utils/duration";
 
 const chartRef = ref(null);
@@ -223,12 +305,23 @@ const personRebindForm = reactive({
 /** 仅在 stats/search-suggest 404（旧版后端）时提示一次 */
 const searchLegacyHintShown = ref(false);
 const periodMode = ref("year");
-const periodValue = ref(new Date());
+/** 统计区间默认取「当前自然年/月/日」，避免直接用 new Date() 变成「今天→明年今天」 */
+function defaultPeriodValue(mode) {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  if (mode === "year") return String(y);
+  if (mode === "month") return `${y}-${m}`;
+  return `${y}-${m}-${String(now.getDate()).padStart(2, "0")}`;
+}
+const periodValue = ref(defaultPeriodValue("year"));
 const brigadeTrainingVisible = ref(false);
 const brigadeTrainingLoading = ref(false);
 const brigadeTrainingRows = ref([]);
 
 const canRebindPersons = computed(() => currentAdmin.value?.role === "detachment");
+
+const nf = (n) => Number(n || 0).toLocaleString("zh-CN");
 
 const periodFormat = computed(() => {
   if (periodMode.value === "year") return "YYYY年";
@@ -271,6 +364,47 @@ const displayPersonCount = computed(() => {
 const displayActiveBrigadeCount = computed(() => {
   return brigadeData.value.filter((item) => Number(item.session_count || 0) > 0).length;
 });
+
+/* ---- 展示辅助：统计口径文案 / 周期切换 / 主办单位名称 / 重置 ---- */
+const periodLabelText = computed(() => {
+  const d = normalizePeriodValue();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  if (periodMode.value === "year") return `${y} 年度`;
+  if (periodMode.value === "month") return `${y} 年 ${m} 月`;
+  return `${y} 年 ${m} 月 ${String(d.getDate()).padStart(2, "0")} 日`;
+});
+
+const brigadeSelectedName = computed(() => {
+  if (!brigadeFilter.value) return "全市";
+  const hit = brigadeOptions.value.find((b) => Number(b.id) === Number(brigadeFilter.value));
+  return hit?.name || "已选主办单位";
+});
+
+function setPeriodMode(mode) {
+  if (periodMode.value === mode) return;
+  periodMode.value = mode;
+  onPeriodModeChange();
+}
+
+function setRankMetric(metric) {
+  if (rankMetric.value === metric) return;
+  rankMetric.value = metric;
+  renderChart();
+}
+
+function clearBrigade() {
+  brigadeFilter.value = undefined;
+  onBrigadeChange();
+}
+
+function resetFilters() {
+  brigadeFilter.value = undefined;
+  searchQ.value = "";
+  periodMode.value = "year";
+  periodValue.value = defaultPeriodValue("year");
+  onPeriodChange();
+}
 
 function normalizePeriodValue() {
   if (periodValue.value instanceof Date) return periodValue.value;
@@ -449,7 +583,6 @@ function renderBarChart() {
   const vals = list.map((item) => rankValue(item));
   chart.setOption(
     {
-      title: { text: `各培训主办单位${rankMetricLabel()}对比`, left: "center", textStyle: { fontSize: 16 } },
       tooltip: {
         trigger: "axis",
         formatter: (items) => {
@@ -457,17 +590,18 @@ function renderBarChart() {
           return `${p.name}<br/>${formatRankValue(p.value)}`;
         },
       },
-      grid: { left: 56, right: 24, bottom: 88, top: 48 },
+      grid: { left: 56, right: 24, bottom: 88, top: 24 },
       xAxis: {
         type: "category",
         data: names,
         axisTick: { show: false, alignWithLabel: true },
-        axisLine: { lineStyle: { color: "#ddd" } },
+        axisLine: { lineStyle: { color: "#eaeff4" } },
         axisLabel: {
           rotate: 0,
           interval: 0,
           fontSize: 12,
           lineHeight: 16,
+          color: "#5a6e82",
           formatter: (name) => {
             const s = String(name);
             if (s.length <= 6) return s;
@@ -480,14 +614,16 @@ function renderBarChart() {
         type: "value",
         name: "",
         axisLabel: {
+          color: "#5a6e82",
           formatter: (v) => rankMetric.value === "person" ? `${v} 人次` : formatMinutesAxisHours(v),
         },
+        splitLine: { lineStyle: { color: "#eaeff4", type: "dashed" } },
       },
       series: [
         {
           type: "bar",
           data: vals,
-          itemStyle: { color: "#3949ab" },
+          itemStyle: { color: "#1b6da3", borderRadius: [3, 3, 0, 0] },
           barMaxWidth: 40,
           barCategoryGap: "32%",
           label: { show: false },
@@ -507,11 +643,13 @@ function renderOrgPie() {
   if (!list.length) {
     chart.setOption(
       {
+        color: ["#114368", "#1b6da3", "#16794c", "#9a6207", "#d0342c", "#5a6e82"],
         title: {
           text: `${distName} — 暂无类型培训时长数据`,
           left: "center",
           subtext: "该区县暂无参训记录，或时长均为 0",
-          textStyle: { fontSize: 16 },
+          textStyle: { fontSize: 15, fontWeight: 600, color: "#114368" },
+          subtextStyle: { color: "#5a6e82" },
         },
         tooltip: { trigger: "item" },
         series: [{ type: "pie", radius: ["38%", "65%"], data: [] }],
@@ -522,16 +660,17 @@ function renderOrgPie() {
   }
   chart.setOption(
     {
+      color: ["#114368", "#1b6da3", "#16794c", "#9a6207", "#d0342c", "#5a6e82"],
       title: {
         text: `${distName} — 各类型培训时长占比`,
         left: "center",
-        textStyle: { fontSize: 16 },
+        textStyle: { fontSize: 15, fontWeight: 600, color: "#114368" },
       },
       tooltip: {
         trigger: "item",
         formatter: (p) => `${p.name}<br/>${formatTrainingHours(p.value)} (${p.percent}%)`,
       },
-      legend: { bottom: 0, type: "scroll" },
+      legend: { bottom: 0, type: "scroll", textStyle: { color: "#5a6e82" } },
       series: [
         {
           type: "pie",
@@ -583,7 +722,7 @@ async function onPeriodChange() {
 }
 
 async function onPeriodModeChange() {
-  periodValue.value = new Date();
+  periodValue.value = defaultPeriodValue(periodMode.value);
   await onPeriodChange();
 }
 
@@ -688,34 +827,16 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.page {
-  background: #fff;
-  padding: 20px 24px;
-  border-radius: 8px;
-  min-height: 400px;
+.chart {
+  width: 100%;
+  height: 420px;
 }
-h2 {
-  margin: 0 0 8px;
-  font-size: 1.25rem;
+.kpi--click {
+  cursor: pointer;
 }
-.sub-title {
-  margin: 24px 0 12px;
-  font-size: 1.05rem;
-}
-.tip {
-  color: #888;
-  font-size: 13px;
-  margin: 0 0 16px;
-  line-height: 1.5;
-}
-.search-bar {
-  margin-bottom: 20px;
-}
-.period-toolbar {
-  margin: 16px 0 12px;
-  padding: 12px 14px;
-  background: #f8f9fd;
-  border-radius: 8px;
+.kpi--click:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
 }
 .ac-item {
   padding: 6px 0;
@@ -724,38 +845,13 @@ h2 {
 .ac-title {
   margin-left: 8px;
   font-weight: 500;
+  color: var(--ink-900);
 }
 .ac-sub {
-  margin-top: 4px;
+  margin-top: 2px;
   margin-left: 52px;
-  font-size: 12px;
-  color: #888;
-}
-.summary-row {
-  margin-bottom: 20px;
-}
-.sum-card {
-  text-align: center;
-}
-.sum-card.clickable {
-  cursor: pointer;
-}
-.sum-label {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 8px;
-}
-.sum-value {
-  font-size: 22px;
-  font-weight: 600;
-  color: #1a237e;
-}
-.toolbar {
-  margin-bottom: 8px;
-}
-.chart {
-  width: 100%;
-  height: 440px;
+  font-size: var(--fs-12);
+  color: var(--ink-500);
 }
 </style>
 

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { clearToken, getToken } from "../utils/auth";
 
 /** 与请求路径 `/api/admin/...` 拼接；若环境变量写成 `http://host:port/api` 会得到 `/api/api/...` → 404，这里去掉末尾的 /api */
 function normalizeApiBase() {
@@ -17,7 +18,7 @@ const http = axios.create({
 });
 
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem("admin_token");
+  const token = getToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -28,7 +29,7 @@ http.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem("admin_token");
+      clearToken();
       window.location.href = "/login";
     }
     return Promise.reject(err);

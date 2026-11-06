@@ -1,531 +1,417 @@
 <template>
-  <div class="dashboard">
-    <section class="topbar">
-      <div>
-        <h1>培训数据总览</h1>
-        <p>{{ scopeText }} · {{ periodLabel }}培训运行情况</p>
+  <div>
+    <div class="page-head">
+      <div class="page-head__main">
+        <div class="eyebrow">数据概览</div>
+        <h1 class="page-title">全市培训运行总览</h1>
+        <p class="page-desc">{{ scopeText }} · {{ periodLabel }} · 数据截至 {{ updatedAt }}</p>
       </div>
-      <div class="top-actions">
-        <el-radio-group v-model="rankMetric" @change="renderBrigadeChart">
-          <el-radio-button label="duration">培训时长</el-radio-button>
-          <el-radio-button label="person">培训人次</el-radio-button>
-        </el-radio-group>
-        <el-radio-group v-model="periodMode" @change="onPeriodModeChange">
-          <el-radio-button label="year">按年</el-radio-button>
-          <el-radio-button label="month">按月</el-radio-button>
-        </el-radio-group>
+      <div class="page-actions">
+        <div class="seg">
+          <button :class="{ 'is-on': periodMode === 'year' }" @click="setMode('year')">按年</button>
+          <button :class="{ 'is-on': periodMode === 'month' }" @click="setMode('month')">按月</button>
+        </div>
         <el-date-picker
           v-model="periodValue"
           :type="periodMode"
           :format="periodMode === 'year' ? 'YYYY年' : 'YYYY年MM月'"
           :value-format="periodMode === 'year' ? 'YYYY' : 'YYYY-MM'"
           :clearable="false"
-          style="width: 140px"
+          style="width: 132px"
           @change="loadAll"
         />
-        <el-button type="primary" @click="loadAll">刷新</el-button>
+        <button class="btn btn--ghost" @click="loadAll">
+          <AppIcon name="refresh" :size="15" />刷新
+        </button>
       </div>
-    </section>
+    </div>
 
-    <section class="metrics">
-      <div class="metric-panel primary">
-        <span>{{ periodMode === "year" ? "年度" : "月度" }}培训时长</span>
-        <strong>{{ formatTrainingHours(totalMinutes) }}</strong>
-        <small>{{ totalSessions }} 场培训</small>
-      </div>
-      <div class="metric-panel">
-        <span>参训人次</span>
-        <strong>{{ attendanceTotal }}</strong>
-        <small>按培训签到累计</small>
-      </div>
-      <div class="metric-panel">
-        <span>已登记人员</span>
-        <strong>{{ personTotal }}</strong>
-        <small>{{ orgTotal }} 个单位纳入管理</small>
-      </div>
-      <div class="metric-panel">
-        <span>{{ periodMode === "year" ? "本月培训" : "本期培训" }}</span>
-        <strong>{{ monthSessions }}</strong>
-        <small>{{ formatTrainingHours(monthMinutes) }}</small>
-      </div>
-    </section>
-
-    <section class="main-grid">
-      <div class="panel span-2">
-        <div class="panel-head">
-          <h2>大队{{ rankMetricLabel }}排行</h2>
-          <span>{{ periodLabel }} · 含葫芦岛支队</span>
+    <div class="grid grid--kpi" style="margin-bottom: 20px">
+      <article class="kpi kpi--accent">
+        <div class="kpi__label"><AppIcon name="clock" :size="13" />{{ periodMode === "year" ? "年度" : "月度" }}培训时长</div>
+        <div class="kpi__value num">{{ hours }}<small>小时</small></div>
+        <div class="kpi__foot">
+          <span>{{ totalSessions }} 场培训 · 场均 {{ avgHours }} 小时</span>
         </div>
-        <div ref="brigadeChartRef" class="chart large" />
-      </div>
+      </article>
 
-      <div class="panel">
-        <div class="panel-head">
-          <h2>培训主题分布</h2>
-          <span>人数占比</span>
-        </div>
-        <div ref="topicChartRef" class="chart" />
-      </div>
+      <article class="kpi">
+        <div class="kpi__label"><AppIcon name="calendar" :size="13" />培训场次</div>
+        <div class="kpi__value num">{{ totalSessions }}<small>场</small></div>
+        <div class="kpi__foot"><span>进行中 {{ activeSessions }} 场</span></div>
+      </article>
 
-      <div class="panel">
-        <div class="panel-head">
-          <h2>今日与本月</h2>
-          <span>运行快照</span>
-        </div>
-        <div class="snapshot-list">
-          <div>
-            <b>{{ todaySessions }}</b>
-            <span>今日培训场次</span>
-          </div>
-          <div>
-            <b>{{ todayPeople }}</b>
-            <span>今日参训人数</span>
-          </div>
-          <div>
-            <b>{{ activeSessions }}</b>
-            <span>当前活动场次</span>
-          </div>
-          <div>
-            <b>{{ topicStats.length }}</b>
-            <span>已使用主题</span>
+      <article class="kpi">
+        <div class="kpi__label"><AppIcon name="users" :size="13" />参训人次</div>
+        <div class="kpi__value num">{{ nf(attendanceTotal) }}<small>人次</small></div>
+        <div class="kpi__foot"><span>实名签到累计</span></div>
+      </article>
+
+      <article class="kpi">
+        <div class="kpi__label"><AppIcon name="building" :size="13" />覆盖单位</div>
+        <div class="kpi__value num">{{ nf(orgTotal) }}<small>家</small></div>
+        <div class="kpi__foot"><span>已登记人员 {{ nf(personTotal) }} 人</span></div>
+      </article>
+    </div>
+
+    <div class="grid grid--2-1" style="margin-bottom: 20px">
+      <section class="card">
+        <div class="card__head">
+          <h3>大队{{ rankMetric === "person" ? "人次" : "培训时长" }}排行</h3>
+          <span class="sub">{{ periodLabel }} · 含葫芦岛支队</span>
+          <div class="grow"></div>
+          <div class="seg">
+            <button :class="{ 'is-on': rankMetric === 'duration' }" @click="rankMetric = 'duration'">时长</button>
+            <button :class="{ 'is-on': rankMetric === 'person' }" @click="rankMetric = 'person'">人次</button>
           </div>
         </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head">
-          <h2>职务岗位</h2>
-          <span>按参训人数</span>
-        </div>
-        <div class="rank-list">
-          <div v-for="item in jobTitleRanks" :key="item.name" class="rank-row">
-            <span>{{ item.name }}</span>
-            <strong>{{ item.value }}人</strong>
+        <div class="card__body">
+          <div v-if="brigadeRanks.length" class="rank rank--aligned">
+            <div v-for="(row, i) in brigadeRanks" :key="row.brigade_name" class="rank__row">
+              <span class="rank__no num">{{ String(i + 1).padStart(2, "0") }}</span>
+              <span class="rank__name" :title="row.brigade_name">{{ row.brigade_name }}</span>
+              <span class="rank__track">
+                <span class="rank__fill" :style="{ width: pct(row.value, brigadeMax) + '%' }"></span>
+              </span>
+              <span class="rank__val">
+                {{ rankMetric === "person" ? nf(row.value) : (row.value / 60).toFixed(1) }}<small>{{ rankMetric === "person" ? "人次" : "小时" }}</small>
+                <small> · {{ row.session_count }}场</small>
+              </span>
+            </div>
           </div>
-          <el-empty v-if="!jobTitleRanks.length" description="暂无职务岗位数据" />
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head">
-          <h2>单位覆盖</h2>
-          <span>按参训人数</span>
-        </div>
-        <div class="rank-list">
-          <div v-for="item in orgRanks" :key="item.organization_id" class="rank-row">
-            <span>{{ item.organization_name }}</span>
-            <strong>{{ item.person_count }}人</strong>
+          <div v-else class="empty">
+            <div class="empty__art"><AppIcon name="chart" :size="26" /></div>
+            <h4>本期暂无培训数据</h4>
+            <p>切换统计周期，或先在培训记录中登记一场培训。</p>
           </div>
-          <el-empty v-if="!orgRanks.length" description="暂无单位数据" />
         </div>
-      </div>
+      </section>
 
-      <div class="panel span-2">
-        <div class="panel-head">
-          <h2>近期培训会议</h2>
-          <span>最近 8 场</span>
+      <section class="card">
+        <div class="card__head">
+          <h3>培训主题分布</h3>
+          <div class="grow"></div>
+          <span class="sub">按场次</span>
         </div>
-        <el-table :data="recentTrainings" size="small" border>
-          <el-table-column prop="title" label="培训名称" min-width="180" />
-          <el-table-column prop="topic_name" label="主题" min-width="120">
-            <template #default="{ row }">{{ row.topic_name || "未分类" }}</template>
-          </el-table-column>
-          <el-table-column label="时间" width="150">
-            <template #default="{ row }">{{ fmt(row.start_at) }}</template>
-          </el-table-column>
-          <el-table-column prop="brigade_name" label="主办单位" min-width="120" />
-          <el-table-column prop="person_count" label="人数" width="80" />
-        </el-table>
+        <div class="card__body">
+          <div v-if="topicRanks.length" class="rank rank--stack">
+            <div v-for="(row, i) in topicRanks" :key="row.name" class="rank__row">
+              <span class="rank__no num">{{ String(i + 1).padStart(2, "0") }}</span>
+              <span class="rank__name" :title="row.name">{{ row.name }}</span>
+              <span class="rank__val">{{ row.pct }}<small>%</small><small> · {{ row.count }}场</small></span>
+              <span class="rank__track">
+                <span class="rank__fill" :style="{ width: row.pct + '%' }"></span>
+              </span>
+            </div>
+          </div>
+          <div v-else class="empty">
+            <div class="empty__art"><AppIcon name="layers" :size="26" /></div>
+            <h4>暂无主题分布</h4>
+            <p>培训登记时选择主题分类后，这里会按场次汇总。</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="grid grid--2-1" style="margin-bottom: 20px">
+      <section class="card">
+        <div class="card__head">
+          <h3>月度培训场次</h3>
+          <span class="sub">{{ chartYear }} 年{{ peakMonth ? ` · 峰值出现在 ${peakMonth} 月` : "" }}</span>
+          <div class="grow"></div>
+          <router-link class="linkbtn" to="/stats">查看统计<AppIcon name="chevron" :size="12" /></router-link>
+        </div>
+        <div class="card__body" style="padding: 12px 16px 8px">
+          <ColumnChart :values="monthValues" :labels="monthLabels" unit="场" aria-label="月度培训场次趋势" />
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <h3>今日运行快照</h3>
+          <div class="grow"></div>
+          <span class="badge badge--live">实时</span>
+        </div>
+        <div class="card__body">
+          <div class="snap">
+            <div class="snap__cell"><b class="num">{{ todaySessions }}</b><span>今日培训场次</span></div>
+            <div class="snap__cell"><b class="num">{{ todayPeople }}</b><span>今日参训人数</span></div>
+            <div class="snap__cell is-live"><b class="num">{{ activeSessions }}</b><span>进行中场次</span></div>
+            <div class="snap__cell"><b class="num">{{ topicRanks.length }}</b><span>已使用主题</span></div>
+          </div>
+
+          <div style="margin-top: 16px; display: grid; gap: 8px">
+            <router-link class="todo" to="/trainings">
+              <span class="todo__dot" style="background: #d0342c"></span>
+              <span class="todo__txt">
+                <b>{{ overdueSessions }} 场培训超过 2 小时未结束</b>
+                <span>建议核对后手动结束</span>
+              </span>
+              <AppIcon name="chevron" :size="14" />
+            </router-link>
+            <router-link class="todo" to="/orgs">
+              <span class="todo__dot" style="background: #9a6207"></span>
+              <span class="todo__txt">
+                <b>{{ orgsMissingContact }} 家单位缺少联系人</b>
+                <span>影响培训通知送达</span>
+              </span>
+              <AppIcon name="chevron" :size="14" />
+            </router-link>
+            <router-link class="todo" to="/persons">
+              <span class="todo__dot" style="background: #1f6fa8"></span>
+              <span class="todo__txt">
+                <b>已登记人员 {{ nf(personTotal) }} 人</b>
+                <span>覆盖 {{ nf(orgTotal) }} 家单位</span>
+              </span>
+              <AppIcon name="chevron" :size="14" />
+            </router-link>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="card__head">
+        <h3>近期培训会议</h3>
+        <span class="sub">最近 {{ recentTrainings.length }} 场</span>
+        <div class="grow"></div>
+        <router-link class="btn btn--ghost btn--sm" to="/trainings">全部记录</router-link>
+      </div>
+      <div class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th>培训主题</th>
+              <th style="width: 160px">主题分类</th>
+              <th style="width: 92px">状态</th>
+              <th style="width: 120px">主办单位</th>
+              <th style="width: 118px">开始时间</th>
+              <th class="num" style="width: 76px">时长</th>
+              <th class="num" style="width: 70px">参训</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in recentTrainings" :key="row.id">
+              <td>
+                <span class="cell-main">{{ row.title }}</span>
+                <span v-if="row.location" class="cell-sub"><AppIcon name="pin" :size="12" />{{ row.location }}</span>
+              </td>
+              <td>{{ row.topic_name || "未分类" }}</td>
+              <td>
+                <span class="badge" :class="row.is_active === false ? 'badge--done' : 'badge--live'">
+                  {{ row.is_active === false ? "已结束" : "进行中" }}
+                </span>
+              </td>
+              <td>{{ row.brigade_name || "—" }}</td>
+              <td class="num">{{ fmt(row.start_at) }}</td>
+              <td class="num">{{ row.duration_minutes }} 分</td>
+              <td class="num">{{ row.person_count }}</td>
+            </tr>
+            <tr v-if="!recentTrainings.length">
+              <td colspan="7">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="calendar" :size="26" /></div>
+                  <h4>还没有培训记录</h4>
+                  <p>登记第一场培训后，这里会显示最近的运行情况。</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
-import * as echarts from "echarts";
+import { computed, onMounted, ref } from "vue";
 import http from "../api/http";
-import { formatTrainingHours } from "../utils/duration";
+import AppIcon from "../components/AppIcon.vue";
+import ColumnChart from "../components/ColumnChart.vue";
 
 const periodMode = ref("year");
 const periodValue = ref(String(new Date().getFullYear()));
 const rankMetric = ref("duration");
+
 const currentAdmin = ref(null);
-const districtStats = ref([]);
 const brigadeStats = ref([]);
 const topicStats = ref([]);
-const trainings = ref([]);
+const periodTrainings = ref([]);
+const yearTrainings = ref([]);
 const persons = ref([]);
 const orgs = ref([]);
-const jobTitleRanks = ref([]);
-const orgRanks = ref([]);
+const updatedAt = ref("—");
 
-const brigadeChartRef = ref(null);
-const topicChartRef = ref(null);
-let brigadeChart;
-let topicChart;
+const MONTHS = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
 const scopeText = computed(() => (currentAdmin.value?.role === "detachment" ? "葫芦岛支队" : "本大队"));
 const periodLabel = computed(() => {
   const raw = String(periodValue.value || "");
   return periodMode.value === "year" ? `${raw} 年度` : `${raw.replace("-", " 年 ")} 月`;
 });
-const rankMetricLabel = computed(() => (rankMetric.value === "person" ? "培训人次" : "培训时长"));
+
 const totalMinutes = computed(() => brigadeStats.value.reduce((s, x) => s + Number(x.total_minutes || 0), 0));
 const totalSessions = computed(() => brigadeStats.value.reduce((s, x) => s + Number(x.session_count || 0), 0));
+const attendanceTotal = computed(() => periodTrainings.value.reduce((s, x) => s + Number(x.person_count || 0), 0));
 const personTotal = computed(() => persons.value.length);
 const orgTotal = computed(() => orgs.value.length);
-const attendanceTotal = computed(() => trainings.value.reduce((s, x) => s + Number(x.person_count || 0), 0));
-const recentTrainings = computed(() => [...trainings.value].sort((a, b) => String(b.start_at).localeCompare(String(a.start_at))).slice(0, 8));
-const activeSessions = computed(() => recentTrainings.value.filter((x) => x.is_active !== false).length);
+const hours = computed(() => (totalMinutes.value / 60).toFixed(1));
+const avgHours = computed(() => (totalSessions.value ? (totalMinutes.value / 60 / totalSessions.value).toFixed(2) : "0.00"));
 
-const todayRange = computed(() => {
-  const d = new Date();
-  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const end = new Date(start);
-  end.setDate(start.getDate() + 1);
-  return [start, end];
+const activeSessions = computed(() => yearTrainings.value.filter((x) => x.is_active !== false).length);
+const overdueSessions = computed(() => {
+  const now = Date.now();
+  return yearTrainings.value.filter((x) => {
+    if (x.is_active === false || !x.start_at) return false;
+    return now - new Date(x.start_at).getTime() > 2 * 3600 * 1000;
+  }).length;
 });
+const orgsMissingContact = computed(() => orgs.value.filter((o) => !o.contact_name).length);
 
-const monthRange = computed(() => {
-  const d = normalizePeriodStart();
-  const start = new Date(d.getFullYear(), d.getMonth(), 1);
-  const end = new Date(start);
-  end.setMonth(start.getMonth() + 1);
-  return [start, end];
-});
-
-const todaySessions = computed(() => trainings.value.filter((x) => inRange(x.start_at, todayRange.value)).length);
-const todayPeople = computed(() => trainings.value.filter((x) => inRange(x.start_at, todayRange.value)).reduce((s, x) => s + Number(x.person_count || 0), 0));
-const monthSessions = computed(() => trainings.value.filter((x) => inRange(x.start_at, monthRange.value)).length);
-const monthMinutes = computed(() => trainings.value.filter((x) => inRange(x.start_at, monthRange.value)).reduce((s, x) => s + Number(x.duration_minutes || 0), 0));
-
-function normalizePeriodStart() {
-  const raw = String(periodValue.value || "");
-  if (periodMode.value === "month") {
-    const [y, m] = raw.split("-").map(Number);
-    return new Date(y, (m || 1) - 1, 1);
-  }
-  return new Date(Number(raw), 0, 1);
-}
-
-function periodParams() {
-  const startDate = normalizePeriodStart();
-  const endDate = new Date(startDate);
-  if (periodMode.value === "month") endDate.setMonth(startDate.getMonth() + 1);
-  else endDate.setFullYear(startDate.getFullYear() + 1);
-  const y = startDate.getFullYear();
-  const m = String(startDate.getMonth() + 1).padStart(2, "0");
-  const d = String(startDate.getDate()).padStart(2, "0");
-  const ey = endDate.getFullYear();
-  const em = String(endDate.getMonth() + 1).padStart(2, "0");
-  const ed = String(endDate.getDate()).padStart(2, "0");
-  return {
-    start: `${y}-${m}-${d}T00:00:00`,
-    end: `${ey}-${em}-${ed}T00:00:00`,
-  };
-}
-
-async function onPeriodModeChange() {
-  const now = new Date();
-  periodValue.value = periodMode.value === "year"
-    ? String(now.getFullYear())
-    : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  await loadAll();
-}
-
-function fmt(v) {
-  return v ? String(v).replace("T", " ").slice(0, 16) : "";
-}
-
-function inRange(iso, range) {
-  if (!iso) return false;
-  const t = new Date(iso).getTime();
-  return t >= range[0].getTime() && t < range[1].getTime();
-}
-
-async function loadAll() {
-  const params = periodParams();
-  const [me, brigades, districts, topics, summary, people, organizations, jobs] = await Promise.all([
-    http.get("/api/admin/me"),
-    http.get("/api/admin/stats/by-brigade", { params }),
-    http.get("/api/admin/stats/by-district", { params }),
-    http.get("/api/admin/stats/by-topic", { params }),
-    http.get("/api/admin/stats/training-summary", { params }),
-    http.get("/api/admin/persons"),
-    http.get("/api/admin/organizations"),
-    http.get("/api/admin/job-titles"),
-  ]);
-  currentAdmin.value = me.data;
-  brigadeStats.value = brigades.data || [];
-  districtStats.value = districts.data || [];
-  topicStats.value = topics.data || [];
-  trainings.value = summary.data || [];
-  persons.value = people.data || [];
-  orgs.value = organizations.data || [];
-  await loadJobTitleRanks(jobs.data || [], params);
-  await loadOrgRanks();
-  await renderCharts();
-}
-
-async function loadJobTitleRanks(jobs, params) {
-  const names = [...new Set([...(persons.value || []).map((p) => p.job_title).filter(Boolean), ...(jobs || []).map((j) => j.name)])].slice(0, 8);
-  const rows = await Promise.all(
-    names.map(async (name) => {
-      try {
-        const { data } = await http.get("/api/admin/stats/by-job-title", {
-          params: { ...params, job_title: name, job_title_only: true },
-        });
-        return { name, value: data.total_person_count || 0 };
-      } catch {
-        return { name, value: 0 };
-      }
-    })
-  );
-  jobTitleRanks.value = rows.filter((x) => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
-}
-
-async function loadOrgRanks() {
-  const districts = districtStats.value.map((d) => d.district_id).filter((id) => Number(id) > 0).slice(0, 10);
-  const rows = [];
-  for (const district_id of districts) {
-    try {
-      const { data } = await http.get("/api/admin/stats/orgs-by-district", { params: { ...periodParams(), district_id } });
-      rows.push(...(data || []));
-    } catch {
-      /* ignore one district */
-    }
-  }
-  orgRanks.value = rows.sort((a, b) => Number(b.person_count || 0) - Number(a.person_count || 0)).slice(0, 6);
-}
-
-async function renderCharts() {
-  await nextTick();
-  renderBrigadeChart();
-  renderTopicChart();
-}
-
-function renderBrigadeChart() {
-  if (!brigadeChartRef.value) return;
-  if (!brigadeChart) brigadeChart = echarts.init(brigadeChartRef.value);
-  const list = [...brigadeStats.value]
-    .filter((item) => !["杨家杖子经济开发区大队", "高新技术开发区大队"].includes(item.brigade_name))
-    .sort((a, b) => rankValue(b) - rankValue(a));
-  brigadeChart.setOption({
-    grid: { left: 146, right: 126, top: 14, bottom: 42, containLabel: false },
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      formatter: (items) => {
-        const item = items[0];
-        const row = list[item.dataIndex];
-        return `${row.brigade_name}<br/>培训时长：${formatTrainingHours(row.total_minutes)}<br/>培训人次：${row.person_count} 人次<br/>培训场次：${row.session_count} 场`;
-      },
-    },
-    xAxis: {
-      type: "value",
-      splitNumber: 4,
-      splitLine: { lineStyle: { color: "#e8edf5" } },
-      axisTick: { show: false },
-      axisLabel: {
-        color: "#667085",
-        margin: 12,
-        hideOverlap: false,
-        showMinLabel: true,
-        showMaxLabel: true,
-        formatter: (value) => rankMetric.value === "person" ? `${value} 人次` : `${(Number(value) / 60).toFixed(0)} 小时`,
-      },
-    },
-    yAxis: {
-      type: "category",
-      data: list.map((item) => item.brigade_name),
-      axisTick: { show: false },
-      axisLine: { show: false },
-      axisLabel: { color: "#344054", fontSize: 13, width: 130, overflow: "truncate" },
-    },
-    series: [{
-      type: "bar",
-      data: list.map((item) => ({ value: rankValue(item), sessionCount: item.session_count })),
-      barWidth: 18,
-      itemStyle: { color: "#1677d2", borderRadius: [0, 5, 5, 0] },
-      label: {
-        show: true,
-        position: "right",
-        color: "#344054",
-        fontSize: 12,
-        formatter: (params) => `${formatRankValue(params.value)}  ·  ${params.data.sessionCount}场`,
-      },
-    }],
-  }, { notMerge: true });
-}
+const brigadeRanks = computed(() =>
+  [...brigadeStats.value]
+    .sort((a, b) => rankValue(b) - rankValue(a))
+    .slice(0, 10)
+    .map((x) => ({ ...x, value: rankValue(x) }))
+);
+const brigadeMax = computed(() => Math.max(1, ...brigadeRanks.value.map((x) => x.value)));
 
 function rankValue(item) {
   return Number(rankMetric.value === "person" ? item.person_count : item.total_minutes) || 0;
 }
 
-function formatRankValue(value) {
-  return rankMetric.value === "person" ? `${value} 人次` : formatTrainingHours(value);
+const topicRanks = computed(() => {
+  // 按「场次」统计：直接用年度培训清单分组，避免统计接口口径不一致
+  const byTopic = new Map();
+  for (const t of yearTrainings.value) {
+    const name = t.topic_name || "未分类";
+    byTopic.set(name, (byTopic.get(name) || 0) + 1);
+  }
+  const total = yearTrainings.value.length || 1;
+  return [...byTopic.entries()]
+    .map(([name, count]) => ({ name, count, pct: Math.round((count / total) * 100) }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6);
+});
+
+const chartYear = computed(() => {
+  const raw = String(periodValue.value || "");
+  return periodMode.value === "year" ? raw : raw.slice(0, 4);
+});
+
+const monthValues = computed(() => {
+  const counts = new Array(12).fill(0);
+  for (const t of yearTrainings.value) {
+    if (!t.start_at) continue;
+    const m = new Date(t.start_at).getMonth();
+    if (m >= 0 && m < 12) counts[m] += 1;
+  }
+  return counts;
+});
+const monthLabels = computed(() => MONTHS);
+const peakMonth = computed(() => {
+  const max = Math.max(...monthValues.value);
+  if (!max) return 0;
+  return monthValues.value.indexOf(max) + 1;
+});
+
+const todaySessions = computed(() => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return yearTrainings.value.filter((x) => inRange(x.start_at, start, end)).length;
+});
+const todayPeople = computed(() => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return yearTrainings.value
+    .filter((x) => inRange(x.start_at, start, end))
+    .reduce((s, x) => s + Number(x.person_count || 0), 0);
+});
+
+const recentTrainings = computed(() =>
+  [...yearTrainings.value]
+    .sort((a, b) => String(b.start_at).localeCompare(String(a.start_at)))
+    .slice(0, 6)
+);
+
+function inRange(iso, start, end) {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  return t >= start.getTime() && t < end.getTime();
 }
 
-function renderTopicChart() {
-  if (!topicChartRef.value) return;
-  if (!topicChart) topicChart = echarts.init(topicChartRef.value);
-  const data = topicStats.value.map((x) => ({ name: x.topic_name, value: x.person_count }));
-  topicChart.setOption({
-    tooltip: { trigger: "item", formatter: "{b}<br/>{c}人 ({d}%)" },
-    legend: { bottom: 0, type: "scroll" },
-    series: [{ type: "pie", radius: ["46%", "68%"], center: ["50%", "44%"], data }],
-  }, { notMerge: true });
+function nf(n) {
+  return Number(n || 0).toLocaleString("zh-CN");
+}
+
+function fmt(v) {
+  return v ? String(v).replace("T", " ").slice(0, 16) : "—";
+}
+
+function pct(v, max) {
+  return Math.round((Number(v || 0) / (max || 1)) * 1000) / 10;
+}
+
+function periodParams() {
+  const raw = String(periodValue.value || "");
+  if (periodMode.value === "month") {
+    const [y, m] = raw.split("-").map(Number);
+    const start = new Date(y, (m || 1) - 1, 1);
+    const end = new Date(y, (m || 1), 1);
+    return { start: toIso(start), end: toIso(end) };
+  }
+  const y = Number(raw);
+  return { start: toIso(new Date(y, 0, 1)), end: toIso(new Date(y + 1, 0, 1)) };
+}
+
+function yearParams() {
+  const y = Number(chartYear.value);
+  return { start: toIso(new Date(y, 0, 1)), end: toIso(new Date(y + 1, 0, 1)) };
+}
+
+function toIso(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T00:00:00`;
+}
+
+function setMode(mode) {
+  if (periodMode.value === mode) return;
+  periodMode.value = mode;
+  const now = new Date();
+  periodValue.value =
+    mode === "year" ? String(now.getFullYear()) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  loadAll();
+}
+
+async function loadAll() {
+  const params = periodParams();
+  const yParams = yearParams();
+  try {
+    const [me, brigades, topics, periodSummary, yearSummary, people, organizations] = await Promise.all([
+      http.get("/api/admin/me"),
+      http.get("/api/admin/stats/by-brigade", { params }),
+      http.get("/api/admin/stats/by-topic", { params }),
+      http.get("/api/admin/stats/training-summary", { params }),
+      http.get("/api/admin/stats/training-summary", { params: yParams }),
+      http.get("/api/admin/persons"),
+      http.get("/api/admin/organizations"),
+    ]);
+    currentAdmin.value = me.data;
+    brigadeStats.value = brigades.data || [];
+    topicStats.value = topics.data || [];
+    periodTrainings.value = periodSummary.data || [];
+    yearTrainings.value = yearSummary.data || [];
+    persons.value = people.data || [];
+    orgs.value = organizations.data || [];
+    updatedAt.value = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 onMounted(loadAll);
-onUnmounted(() => {
-  brigadeChart?.dispose();
-  topicChart?.dispose();
-});
 </script>
-
-<style scoped>
-.dashboard {
-  color: #172033;
-}
-.topbar {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-h1 {
-  font-size: 24px;
-  margin: 0 0 6px;
-}
-p {
-  color: #667085;
-  margin: 0;
-}
-.top-actions {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-}
-.metrics {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 14px;
-}
-.metric-panel,
-.panel {
-  background: #fff;
-  border: 1px solid #e6eaf2;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(19, 31, 55, 0.05);
-}
-.metric-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 96px;
-  padding: 16px;
-}
-.metric-panel.primary {
-  background: #102a43;
-  color: #fff;
-}
-.metric-panel span,
-.metric-panel small {
-  color: #667085;
-  font-size: 13px;
-}
-.metric-panel.primary span,
-.metric-panel.primary small {
-  color: #d6e4f0;
-}
-.metric-panel strong {
-  font-size: 26px;
-  line-height: 1.25;
-  margin: 8px 0;
-}
-.main-grid {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.panel {
-  min-height: 260px;
-  padding: 16px;
-}
-.span-2 {
-  grid-column: span 2;
-}
-.panel-head {
-  align-items: baseline;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-h2 {
-  font-size: 16px;
-  margin: 0;
-}
-.panel-head span {
-  color: #7b8794;
-  font-size: 12px;
-}
-.chart {
-  height: 220px;
-  width: 100%;
-}
-.chart.large {
-  height: 280px;
-}
-.snapshot-list {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.snapshot-list div {
-  background: #f6f8fb;
-  border-radius: 8px;
-  padding: 14px;
-}
-.snapshot-list b {
-  color: #0f766e;
-  display: block;
-  font-size: 24px;
-  margin-bottom: 6px;
-}
-.snapshot-list span {
-  color: #667085;
-  font-size: 13px;
-}
-.rank-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.rank-row {
-  align-items: center;
-  background: #f8fafc;
-  border-radius: 8px;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  min-height: 38px;
-  padding: 0 12px;
-}
-.rank-row span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rank-row strong {
-  color: #b45309;
-  flex: 0 0 auto;
-}
-@media (max-width: 1180px) {
-  .metrics,
-  .main-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-</style>

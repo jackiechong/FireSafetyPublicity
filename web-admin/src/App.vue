@@ -1,16 +1,8 @@
 <template>
+  <IconSprite />
   <router-view />
 </template>
 
 <script setup>
+import IconSprite from "./components/IconSprite.vue";
 </script>
-
-<style>
-html,
-body,
-#app {
-  margin: 0;
-  height: 100%;
-  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-}
-</style>

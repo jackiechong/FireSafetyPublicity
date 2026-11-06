@@ -1,136 +1,288 @@
 <template>
-  <div class="page">
-    <h2>培训记录</h2>
-    <div class="toolbar">
-      <el-input
-        v-model="searchQ"
-        clearable
-        placeholder="搜索会议名称"
-        style="width: 280px"
-        @keyup.enter="load(true)"
-        @clear="load(true)"
-      />
-      <el-button type="primary" @click="load(true)">搜索会议</el-button>
-      <el-button type="primary" @click="openCreate">登记培训</el-button>
+  <div>
+    <div class="page-head">
+      <div class="page-head__main">
+        <div class="eyebrow">培训业务</div>
+        <h1 class="page-title">培训记录</h1>
+        <p class="page-desc">登记、跟进与归档全市培训会议；进行中的场次可实时查看签到进度</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn btn--primary" @click="openCreate">
+          <AppIcon name="plus" :size="15" />登记培训
+        </button>
+      </div>
     </div>
 
-    <el-table :data="rows" border stripe v-loading="loading" style="margin-top: 16px">
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column label="主题" min-width="180">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openAttendanceList(row)">{{ row.title }}</el-button>
-        </template>
-      </el-table-column>
-      <el-table-column label="主题分类" min-width="120">
-        <template #default="{ row }">{{ topicName(row.topic_id) }}</template>
-      </el-table-column>
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">{{ row.is_active !== false ? "进行中" : "已结束" }}</template>
-      </el-table-column>
-      <el-table-column label="培训主办单位" width="130">
-        <template #default="{ row }">{{ brigadeName(row.brigade_id) }}</template>
-      </el-table-column>
-      <el-table-column label="开始时间" width="170">
-        <template #default="{ row }">{{ formatTime(row.start_at) }}</template>
-      </el-table-column>
-      <el-table-column prop="duration_minutes" label="时长(分)" width="100" />
-      <el-table-column prop="location" label="地点" min-width="120" />
-      <el-table-column label="操作" width="280" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="primary" @click="openAttendance(row)">添加参训人员</el-button>
-          <el-button link type="primary" @click="exportAttendance(row)">导出签到簿</el-button>
-          <el-button v-if="row.is_active !== false" link type="warning" @click="endTraining(row)">结束</el-button>
-          <el-button link type="danger" @click="deleteTraining(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="page"
-        v-model:page-size="pageSize"
-        :total="total"
-        :page-sizes="[20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @current-change="changePage"
-        @size-change="changePageSize"
-      />
+    <div class="filterbar">
+      <div class="field" style="flex: 1; min-width: 240px">
+        <label for="f-kw">关键词</label>
+        <div class="search-inline">
+          <AppIcon name="search" :size="15" />
+          <input
+            id="f-kw"
+            v-model="searchQ"
+            class="input"
+            placeholder="培训主题 / 地点"
+            @keyup.enter="load(true)"
+          />
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; margin-left: auto">
+        <button class="btn btn--primary" @click="load(true)">查询</button>
+        <button class="btn btn--ghost" @click="resetFilters">重置</button>
+      </div>
     </div>
 
-    <el-dialog v-model="createVisible" title="登记培训" width="560px" destroy-on-close>
-      <el-form :model="createForm" label-width="120px">
-        <el-form-item label="主题" required>
-          <el-input v-model="createForm.title" />
-        </el-form-item>
-        <el-form-item label="主题分类">
-          <el-select v-model="createForm.topic_id" clearable style="width: 100%">
-            <el-option v-for="t in activeTopics" :key="t.id" :label="t.name" :value="t.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="培训主办单位" required>
-          <el-select v-model="createForm.brigade_id" style="width: 100%">
-            <el-option v-for="b in brigades" :key="b.id" :label="b.name" :value="b.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="开始时间" required>
-          <el-date-picker v-model="createForm.start_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="时长(分钟)">
-          <el-input-number v-model="createForm.duration_minutes" :min="0" />
-        </el-form-item>
-        <el-form-item label="地点">
-          <el-input v-model="createForm.location" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="createForm.remark" type="textarea" rows="2" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submitCreate">保存</el-button>
-      </template>
-    </el-dialog>
+    <div v-if="searchQ" class="chips">
+      <span class="chip">
+        <b>关键词</b>{{ searchQ }}
+        <button type="button" aria-label="移除关键词" @click="resetFilters"><AppIcon name="x" :size="11" /></button>
+      </span>
+      <button class="chips__reset" type="button" @click="resetFilters">清除全部</button>
+    </div>
 
-    <el-dialog v-model="editVisible" title="编辑培训" width="560px" destroy-on-close>
-      <el-form label-width="100px">
-        <el-form-item label="培训名称" required>
-          <el-input v-model="editForm.title" />
-        </el-form-item>
-        <el-form-item label="主题分类">
-          <el-select v-model="editForm.topic_id" clearable style="width: 100%">
-            <el-option v-for="t in editTopicOptions" :key="t.id" :label="t.name" :value="t.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="培训主办单位" required>
-          <el-select v-model="editForm.brigade_id" style="width: 100%">
-            <el-option v-for="b in brigades" :key="b.id" :label="b.name" :value="b.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="开始时间" required>
-          <el-date-picker v-model="editForm.start_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="时长(分钟)">
-          <el-input-number v-model="editForm.duration_minutes" :min="0" />
-        </el-form-item>
-        <el-form-item label="地点">
-          <el-input v-model="editForm.location" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="editForm.remark" type="textarea" rows="2" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="editSaving" @click="submitEdit">保存</el-button>
-      </template>
-    </el-dialog>
+    <section class="card">
+      <div class="card__head">
+        <h3>培训清单</h3>
+        <span class="sub">共 {{ total }} 条</span>
+        <div class="grow"></div>
+        <span class="badge badge--live">进行中 {{ activeCount }}</span>
+      </div>
 
-    <el-dialog v-model="attVisible" title="添加参训人员" width="500px">
-      <el-form label-width="100px">
-        <el-form-item label="培训ID">
-          <span>{{ currentSession?.id }}</span>
+      <div v-loading="loading" class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th style="width: 64px">ID</th>
+              <th>培训主题</th>
+              <th style="width: 170px">主题分类</th>
+              <th style="width: 96px">状态</th>
+              <th style="width: 130px">主办单位</th>
+              <th style="width: 150px">开始时间</th>
+              <th class="num" style="width: 76px">时长</th>
+              <th class="col-actions" style="width: 96px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="row.id">
+              <td class="num" style="color: var(--ink-400)">{{ row.id }}</td>
+              <td>
+                <button class="cell-main linkbtn" style="padding: 0" @click="openAttendanceList(row)">
+                  {{ row.title }}
+                </button>
+                <span v-if="row.location" class="cell-sub"><AppIcon name="pin" :size="12" />{{ row.location }}</span>
+              </td>
+              <td>{{ topicName(row.topic_id) }}</td>
+              <td>
+                <span class="badge" :class="row.is_active !== false ? 'badge--live' : 'badge--done'">
+                  {{ row.is_active !== false ? "进行中" : "已结束" }}
+                </span>
+              </td>
+              <td>{{ brigadeName(row.brigade_id) }}</td>
+              <td class="num">{{ formatTime(row.start_at) }}</td>
+              <td class="num">{{ row.duration_minutes }} 分</td>
+              <td class="col-actions">
+                <div class="rowact" style="display: inline-flex; align-items: center; gap: 2px">
+                  <button class="linkbtn" @click="openAttendanceList(row)">查看</button>
+                  <el-dropdown trigger="click" @command="(cmd) => onRowCommand(cmd, row)">
+                    <button class="iconbtn" aria-label="更多操作"><AppIcon name="more" :size="16" /></button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="edit">编辑培训</el-dropdown-item>
+                        <el-dropdown-item command="attendance">添加参训人员</el-dropdown-item>
+                        <el-dropdown-item command="export">导出签到簿</el-dropdown-item>
+                        <el-dropdown-item v-if="row.is_active !== false" command="end" divided>结束培训</el-dropdown-item>
+                        <el-dropdown-item command="delete" divided class="is-danger">删除</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!rows.length && !loading">
+              <td colspan="8">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="calendar" :size="26" /></div>
+                  <h4>没有找到培训记录</h4>
+                  <p>{{ searchQ ? "换个关键词试试，或清除筛选条件。" : "还没有登记过培训，先登记第一场吧。" }}</p>
+                  <button v-if="searchQ" class="btn btn--ghost btn--sm" @click="resetFilters">清除筛选</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <span>共 {{ total }} 条 · 每页 {{ pageSize }} 条</span>
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[20, 50, 100]"
+          layout="sizes, prev, pager, next, jumper"
+          background
+          @current-change="changePage"
+          @size-change="changePageSize"
+        />
+      </div>
+    </section>
+
+    <!-- 登记 / 编辑：右侧抽屉 -->
+    <el-drawer v-model="createVisible" size="520px" :with-header="false" destroy-on-close class="form-drawer">
+      <div class="drawer-shell">
+        <div class="drawer__head">
+          <div class="grow">
+            <h3>登记培训</h3>
+            <p>保存后自动生成签到二维码，可现场投屏或导出签到簿</p>
+          </div>
+          <button class="iconbtn" aria-label="关闭" @click="createVisible = false">
+            <AppIcon name="x" :size="16" />
+          </button>
+        </div>
+        <div class="drawer__body">
+          <el-form :model="createForm" label-position="top">
+            <div class="fieldset">
+              <div class="fieldset__title">基本信息</div>
+              <div class="formgrid">
+                <div class="field span-2">
+                  <label>培训主题<span class="req">*</span></label>
+                  <el-input v-model="createForm.title" placeholder="如：建昌县消防救援大队开展消防宣传月活动" />
+                </div>
+                <div class="field">
+                  <label>主题分类</label>
+                  <el-select v-model="createForm.topic_id" clearable placeholder="未分类" style="width: 100%">
+                    <el-option v-for="t in activeTopics" :key="t.id" :label="t.name" :value="t.id" />
+                  </el-select>
+                </div>
+                <div class="field">
+                  <label>主办单位<span class="req">*</span></label>
+                  <el-select v-model="createForm.brigade_id" placeholder="请选择" style="width: 100%">
+                    <el-option v-for="b in brigades" :key="b.id" :label="b.name" :value="b.id" />
+                  </el-select>
+                </div>
+              </div>
+            </div>
+
+            <div class="fieldset">
+              <div class="fieldset__title">时间与地点</div>
+              <div class="formgrid">
+                <div class="field">
+                  <label>开始时间<span class="req">*</span></label>
+                  <el-date-picker
+                    v-model="createForm.start_at"
+                    type="datetime"
+                    value-format="YYYY-MM-DDTHH:mm:ss"
+                    style="width: 100%"
+                  />
+                </div>
+                <div class="field">
+                  <label>时长（分钟）</label>
+                  <el-input-number v-model="createForm.duration_minutes" :min="0" :step="30" style="width: 100%" />
+                  <div class="hint">默认 60 分钟，按 30 分钟增减</div>
+                </div>
+                <div class="field span-2">
+                  <label>培训地点</label>
+                  <el-input v-model="createForm.location" placeholder="填写详细地址，便于参训人员导航到场" />
+                </div>
+                <div class="field span-2">
+                  <label>备注</label>
+                  <el-input v-model="createForm.remark" type="textarea" :rows="2" placeholder="选填：主讲人、课件、注意事项…" />
+                </div>
+              </div>
+            </div>
+          </el-form>
+        </div>
+        <div class="drawer__foot">
+          <span class="hint" style="margin: 0">保存后状态为「进行中」，可随时结束或补录</span>
+          <div class="grow"></div>
+          <button class="btn btn--ghost" @click="createVisible = false">取消</button>
+          <button class="btn btn--primary" :disabled="saving" @click="submitCreate">
+            {{ saving ? "保存中…" : "保存并生成签到码" }}
+          </button>
+        </div>
+      </div>
+    </el-drawer>
+
+    <el-drawer v-model="editVisible" size="520px" :with-header="false" destroy-on-close class="form-drawer">
+      <div class="drawer-shell">
+        <div class="drawer__head">
+          <div class="grow">
+            <h3>编辑培训</h3>
+            <p>修改后立即生效，已生成的签到记录不受影响</p>
+          </div>
+          <button class="iconbtn" aria-label="关闭" @click="editVisible = false">
+            <AppIcon name="x" :size="16" />
+          </button>
+        </div>
+        <div class="drawer__body">
+          <el-form label-position="top">
+            <div class="fieldset">
+              <div class="fieldset__title">基本信息</div>
+              <div class="formgrid">
+                <div class="field span-2">
+                  <label>培训名称<span class="req">*</span></label>
+                  <el-input v-model="editForm.title" />
+                </div>
+                <div class="field">
+                  <label>主题分类</label>
+                  <el-select v-model="editForm.topic_id" clearable placeholder="未分类" style="width: 100%">
+                    <el-option v-for="t in editTopicOptions" :key="t.id" :label="t.name" :value="t.id" />
+                  </el-select>
+                </div>
+                <div class="field">
+                  <label>主办单位<span class="req">*</span></label>
+                  <el-select v-model="editForm.brigade_id" style="width: 100%">
+                    <el-option v-for="b in brigades" :key="b.id" :label="b.name" :value="b.id" />
+                  </el-select>
+                </div>
+              </div>
+            </div>
+            <div class="fieldset">
+              <div class="fieldset__title">时间与地点</div>
+              <div class="formgrid">
+                <div class="field">
+                  <label>开始时间<span class="req">*</span></label>
+                  <el-date-picker
+                    v-model="editForm.start_at"
+                    type="datetime"
+                    value-format="YYYY-MM-DDTHH:mm:ss"
+                    style="width: 100%"
+                  />
+                </div>
+                <div class="field">
+                  <label>时长（分钟）</label>
+                  <el-input-number v-model="editForm.duration_minutes" :min="0" :step="30" style="width: 100%" />
+                </div>
+                <div class="field span-2">
+                  <label>培训地点</label>
+                  <el-input v-model="editForm.location" />
+                </div>
+                <div class="field span-2">
+                  <label>备注</label>
+                  <el-input v-model="editForm.remark" type="textarea" :rows="2" />
+                </div>
+              </div>
+            </div>
+          </el-form>
+        </div>
+        <div class="drawer__foot">
+          <div class="grow"></div>
+          <button class="btn btn--ghost" @click="editVisible = false">取消</button>
+          <button class="btn btn--primary" :disabled="editSaving" @click="submitEdit">
+            {{ editSaving ? "保存中…" : "保存修改" }}
+          </button>
+        </div>
+      </div>
+    </el-drawer>
+
+    <!-- 添加参训人员 -->
+    <el-dialog v-model="attVisible" title="添加参训人员" width="480px" destroy-on-close>
+      <el-form label-position="top">
+        <el-form-item label="培训">
+          <span>{{ currentSession?.title }}（#{{ currentSession?.id }}）</span>
         </el-form-item>
-        <el-form-item label="手机号">
+        <el-form-item label="手机号" required>
           <el-input v-model="attPhone" maxlength="11" placeholder="与小程序绑定一致" />
         </el-form-item>
         <template v-if="currentAdmin?.role === 'detachment'">
@@ -144,29 +296,54 @@
             <el-input v-model="attPersonCategory" maxlength="64" placeholder="如：消控室人员" />
           </el-form-item>
         </template>
-        <el-form-item label="本次时长(分)">
+        <el-form-item label="本次时长（分钟）">
           <el-input-number v-model="attDuration" :min="0" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="attVisible = false">取消</el-button>
-        <el-button type="primary" :loading="attSaving" @click="submitAttendance">确定</el-button>
+        <button class="btn btn--ghost" @click="attVisible = false">取消</button>
+        <button class="btn btn--primary" :disabled="attSaving" @click="submitAttendance">
+          {{ attSaving ? "提交中…" : "确定添加" }}
+        </button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="attListVisible" :title="`${attListSession?.title || '培训'}参训人员`" width="760px" destroy-on-close>
-      <el-table :data="attListRows" border stripe v-loading="attListLoading" size="small">
-        <el-table-column prop="index" label="序号" width="70" />
-        <el-table-column prop="organization_name" label="单位" min-width="200" />
-        <el-table-column prop="name" label="姓名" width="110" />
-        <el-table-column prop="job_title" label="职务" width="130">
-          <template #default="{ row }">{{ row.job_title || "—" }}</template>
-        </el-table-column>
-        <el-table-column prop="phone" label="电话" width="130" />
-      </el-table>
+    <!-- 参训人员明细 -->
+    <el-dialog v-model="attListVisible" :title="`${attListSession?.title || '培训'} · 参训人员`" width="820px" destroy-on-close>
+      <div v-loading="attListLoading">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th style="width: 64px">序号</th>
+              <th>单位</th>
+              <th style="width: 110px">姓名</th>
+              <th style="width: 140px">职务</th>
+              <th style="width: 130px">电话</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in attListRows" :key="row.index">
+              <td class="num">{{ row.index }}</td>
+              <td>{{ row.organization_name }}</td>
+              <td>{{ row.name }}</td>
+              <td>{{ row.job_title || "—" }}</td>
+              <td class="num">{{ row.phone }}</td>
+            </tr>
+            <tr v-if="!attListRows.length">
+              <td colspan="5">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="users" :size="26" /></div>
+                  <h4>还没有人签到</h4>
+                  <p>把签到码投屏给参训人员，扫码后这里会实时更新。</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <template #footer>
-        <el-button @click="attListVisible = false">关闭</el-button>
-        <el-button type="primary" @click="exportAttendance(attListSession)">导出签到簿</el-button>
+        <button class="btn btn--ghost" @click="attListVisible = false">关闭</button>
+        <button class="btn btn--primary" @click="exportAttendance(attListSession)">导出签到簿</button>
       </template>
     </el-dialog>
   </div>
@@ -176,6 +353,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import http from "../api/http";
+import AppIcon from "../components/AppIcon.vue";
 
 const loading = ref(false);
 const saving = ref(false);
@@ -225,9 +403,10 @@ const pageSize = ref(20);
 const total = ref(0);
 
 const activeTopics = computed(() => topics.value.filter((t) => t.is_active !== false));
-const editTopicOptions = computed(() =>
-  topics.value.filter((t) => t.is_active !== false || t.id === editing.value?.topic_id)
+const editTopicOptions = computed(
+  () => topics.value.filter((t) => t.is_active !== false || t.id === editing.value?.topic_id)
 );
+const activeCount = computed(() => rows.value.filter((r) => r.is_active !== false).length);
 
 function brigadeName(id) {
   return brigades.value.find((b) => b.id === id)?.name || id;
@@ -239,7 +418,7 @@ function topicName(id) {
 
 function formatTime(iso) {
   if (!iso) return "";
-  return iso.replace("T", " ").slice(0, 19);
+  return iso.replace("T", " ").slice(0, 16);
 }
 
 async function load(resetPage = false) {
@@ -256,6 +435,11 @@ async function load(resetPage = false) {
   } finally {
     loading.value = false;
   }
+}
+
+function resetFilters() {
+  searchQ.value = "";
+  load(true);
 }
 
 function changePageSize(size) {
@@ -296,11 +480,11 @@ async function submitCreate() {
   saving.value = true;
   try {
     await http.post("/api/admin/trainings", createForm);
-    ElMessage.success("已登记");
+    ElMessage.success("培训已登记，签到码已生成");
     createVisible.value = false;
     await load();
   } catch (e) {
-    console.error(e);
+    ElMessage.error(e?.response?.data?.detail || "登记失败");
   } finally {
     saving.value = false;
   }
@@ -346,6 +530,14 @@ async function submitEdit() {
   }
 }
 
+function onRowCommand(cmd, row) {
+  if (cmd === "edit") openEdit(row);
+  else if (cmd === "attendance") openAttendance(row);
+  else if (cmd === "export") exportAttendance(row);
+  else if (cmd === "end") endTraining(row);
+  else if (cmd === "delete") deleteTraining(row);
+}
+
 function openAttendance(row) {
   currentSession.value = row;
   attPhone.value = "";
@@ -374,7 +566,7 @@ async function submitAttendance() {
     ElMessage.success("已添加");
     attVisible.value = false;
   } catch (e) {
-    console.error(e);
+    ElMessage.error(e?.response?.data?.detail || "添加失败");
   } finally {
     attSaving.value = false;
   }
@@ -415,7 +607,11 @@ async function endTraining(row) {
 }
 
 async function deleteTraining(row) {
-  await ElMessageBox.confirm(`确定删除“${row.title}”吗？删除后参训记录也会一并删除。`, "删除培训", { type: "warning" });
+  await ElMessageBox.confirm(`确定删除“${row.title}”吗？删除后参训记录也会一并删除。`, "删除培训", {
+    type: "warning",
+    confirmButtonText: "删除",
+    confirmButtonClass: "el-button--danger",
+  });
   await http.delete(`/api/admin/trainings/${row.id}`);
   ElMessage.success("已删除");
   await load();
@@ -435,24 +631,13 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page {
-  background: #fff;
-  padding: 20px 24px;
-  border-radius: 8px;
-  min-height: 400px;
-}
-h2 {
-  margin: 0 0 16px;
-  font-size: 1.25rem;
-}
-.toolbar {
+.drawer-shell {
   display: flex;
-  gap: 10px;
-  align-items: center;
+  flex-direction: column;
+  height: 100%;
 }
-.pagination {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+:deep(.form-drawer .el-drawer__body) {
+  padding: 0;
+  overflow: hidden;
 }
 </style>

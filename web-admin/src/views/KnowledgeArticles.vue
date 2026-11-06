@@ -1,22 +1,31 @@
 <template>
-  <div class="page">
-    <div class="head">
-      <div>
-        <h2>知识专栏</h2>
-        <p>维护小程序首页展示的栏目名称和栏目内容。</p>
+  <div>
+    <div class="page-head">
+      <div class="page-head__main">
+        <div class="eyebrow">宣传阵地</div>
+        <h1 class="page-title">知识专栏</h1>
+        <p class="page-desc">维护小程序首页的栏目、图文与视频内容，以及顶部宣传图</p>
       </div>
-      <div class="head-actions">
-        <el-button @click="openNotice">发布通知公告</el-button>
-        <el-button type="primary" @click="open()">新增内容</el-button>
+      <div class="page-actions">
+        <button class="btn btn--ghost" @click="openNotice">
+          <AppIcon name="bell" :size="15" />发布通知公告
+        </button>
+        <button class="btn btn--primary" @click="open()">
+          <AppIcon name="plus" :size="15" />新增内容
+        </button>
       </div>
     </div>
 
-    <section class="panel">
-      <div class="panel-head">
+    <section class="card">
+      <div class="card__head">
         <h3>首页顶部图片</h3>
-        <el-button type="primary" :loading="savingHome" @click="saveHomeConfig">保存设置</el-button>
+        <span class="sub">展示在小程序首页顶部</span>
+        <div class="grow"></div>
+        <button class="btn btn--primary btn--sm" :disabled="savingHome" @click="saveHomeConfig">
+          {{ savingHome ? "保存中…" : "保存设置" }}
+        </button>
       </div>
-      <div class="banner-editor">
+      <div class="card__body banner-editor">
         <el-image
           v-if="homeConfig.banner_image_url"
           :src="assetUrl(homeConfig.banner_image_url)"
@@ -25,132 +34,288 @@
           :preview-src-list="[assetUrl(homeConfig.banner_image_url)]"
           preview-teleported
         />
-        <div v-else class="banner-empty">未设置首页顶部图片</div>
-        <div class="banner-actions">
-          <el-input v-model="homeConfig.banner_image_url" maxlength="512" placeholder="可填写 https://... 或上传图片后自动生成" />
-          <el-upload :show-file-list="false" accept="image/*" :http-request="uploadHomeBanner">
-            <el-button>上传图片</el-button>
-          </el-upload>
+        <div v-else class="banner-empty">
+          <AppIcon name="image" :size="22" />
+          <span>尚未设置顶部图片</span>
+        </div>
+        <div class="field">
+          <label for="banner-url">图片地址</label>
+          <div class="media-field">
+            <input
+              id="banner-url"
+              v-model="homeConfig.banner_image_url"
+              class="input"
+              maxlength="512"
+              placeholder="粘贴 https:// 图片链接，或上传后自动填入"
+            />
+            <el-upload :show-file-list="false" accept="image/*" :http-request="uploadHomeBanner">
+              <button type="button" class="btn btn--ghost">
+                <AppIcon name="upload" :size="14" />上传
+              </button>
+            </el-upload>
+          </div>
+          <div class="hint">建议 750 × 320 像素横图，保存后小程序端即时生效</div>
         </div>
       </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
+    <section class="card">
+      <div class="card__head">
         <h3>栏目管理</h3>
-        <div class="category-add">
-          <el-input v-model="newCategory.name" maxlength="64" placeholder="新增栏目名称" style="width: 180px" />
-          <el-input-number v-model="newCategory.sort_order" :min="0" :max="9999" size="small" />
-          <el-button type="primary" :loading="saving" @click="addCategory">新增栏目</el-button>
-        </div>
+        <span class="sub">共 {{ categories.length }} 个栏目 · 修改后点“保存”生效</span>
       </div>
-      <el-table :data="categories" border stripe size="small">
-        <el-table-column label="栏目名称">
-          <template #default="{ row }">
-            <el-input v-model="row.name" maxlength="64" size="small" />
-          </template>
-        </el-table-column>
-        <el-table-column prop="code" label="编码" width="140" />
-        <el-table-column label="排序" width="120">
-          <template #default="{ row }">
-            <el-input-number v-model="row.sort_order" :min="0" :max="9999" size="small" />
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-switch v-model="row.is_active" />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="saveCategory(row)">保存</el-button>
-            <el-button link type="danger" @click="removeCategory(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="card__body cat-add">
+        <input
+          v-model="newCategory.name"
+          class="input"
+          maxlength="64"
+          placeholder="新增栏目名称，如：消防知识"
+          style="width: 240px"
+        />
+        <el-input-number
+          v-model="newCategory.sort_order"
+          :min="0"
+          :max="9999"
+          size="small"
+          controls-position="right"
+          style="width: 108px"
+        />
+        <button class="btn btn--primary btn--sm" :disabled="saving" @click="addCategory">
+          <AppIcon name="plus" :size="13" />新增栏目
+        </button>
+      </div>
+      <div class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th>栏目名称</th>
+              <th style="width: 168px">编码</th>
+              <th style="width: 128px">排序</th>
+              <th style="width: 96px">状态</th>
+              <th class="col-actions" style="width: 132px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in categories" :key="c.id">
+              <td>
+                <el-input v-model="c.name" size="small" maxlength="64" />
+              </td>
+              <td><span class="code">{{ c.code }}</span></td>
+              <td>
+                <el-input-number
+                  v-model="c.sort_order"
+                  :min="0"
+                  :max="9999"
+                  size="small"
+                  controls-position="right"
+                  style="width: 108px"
+                />
+              </td>
+              <td>
+                <el-switch v-model="c.is_active" size="small" />
+              </td>
+              <td class="col-actions">
+                <div class="rowact">
+                  <button class="linkbtn" @click="saveCategory(c)">保存</button>
+                  <el-dropdown trigger="click" @command="(cmd) => cmd === 'delete' && removeCategory(c)">
+                    <button class="iconbtn" aria-label="更多操作"><AppIcon name="more" :size="16" /></button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="delete" class="is-danger">删除栏目</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!categories.length">
+              <td colspan="5">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="layers" :size="26" /></div>
+                  <h4>还没有栏目</h4>
+                  <p>先在上方输入栏目名称并新增，内容才能归类展示。</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
-    <el-table :data="rows" border stripe v-loading="loading" style="margin-top: 16px">
-      <el-table-column label="栏目" width="120">
-        <template #default="{ row }">{{ categoryName(row.category) }}</template>
-      </el-table-column>
-      <el-table-column prop="title" label="标题" min-width="180" />
-      <el-table-column label="图片" width="90">
-        <template #default="{ row }">
-          <el-image
-            v-if="row.image_url"
-            :src="assetUrl(row.image_url)"
-            fit="cover"
-            style="width: 52px; height: 36px; border-radius: 6px"
-            :preview-src-list="[assetUrl(row.image_url)]"
-            preview-teleported
-          />
-          <span v-else class="muted">无</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="视频" width="90">
-        <template #default="{ row }">
-          <el-tag v-if="row.video_url" type="success">已上传</el-tag>
-          <span v-else class="muted">无</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="sort_order" label="排序" width="90" />
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? "启用" : "停用" }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="150">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="open(row)">编辑</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <section class="card">
+      <div class="card__head">
+        <h3>专栏内容</h3>
+        <span class="sub">共 {{ rows.length }} 条</span>
+        <div class="grow"></div>
+        <span class="badge badge--ok">启用 {{ rows.filter((r) => r.is_active).length }}</span>
+      </div>
+      <div v-loading="loading" class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th style="width: 132px">栏目</th>
+              <th>标题</th>
+              <th style="width: 84px">图片</th>
+              <th style="width: 96px">视频</th>
+              <th class="num" style="width: 72px">排序</th>
+              <th style="width: 92px">状态</th>
+              <th class="col-actions" style="width: 120px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="row.id">
+              <td>{{ categoryName(row.category) }}</td>
+              <td>
+                <button class="cell-main linkbtn" style="padding: 0" @click="open(row)">{{ row.title }}</button>
+              </td>
+              <td>
+                <el-image
+                  v-if="row.image_url"
+                  :src="assetUrl(row.image_url)"
+                  fit="cover"
+                  class="thumb"
+                  :preview-src-list="[assetUrl(row.image_url)]"
+                  preview-teleported
+                />
+                <span v-else class="muted">无</span>
+              </td>
+              <td>
+                <span v-if="row.video_url" class="badge badge--ok">已上传</span>
+                <span v-else class="badge badge--off">无</span>
+              </td>
+              <td class="num">{{ row.sort_order }}</td>
+              <td>
+                <span class="badge" :class="row.is_active ? 'badge--ok' : 'badge--off'">
+                  {{ row.is_active ? "启用" : "停用" }}
+                </span>
+              </td>
+              <td class="col-actions">
+                <div class="rowact">
+                  <button class="linkbtn" @click="open(row)">编辑</button>
+                  <el-dropdown trigger="click" @command="(cmd) => cmd === 'delete' && remove(row)">
+                    <button class="iconbtn" aria-label="更多操作"><AppIcon name="more" :size="16" /></button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="delete" class="is-danger">删除</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!rows.length && !loading">
+              <td colspan="7">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="book" :size="26" /></div>
+                  <h4>还没有专栏内容</h4>
+                  <p>新增图文或视频内容，也可以先发一条通知公告。</p>
+                  <button class="btn btn--primary btn--sm" @click="open()">新增内容</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-    <el-dialog v-model="visible" :title="editing ? '编辑内容' : '新增内容'" width="640px" destroy-on-close>
-      <el-form label-width="80px">
-        <el-form-item label="栏目" required>
-          <el-select v-model="form.category" style="width: 100%">
-            <el-option v-for="c in categories" :key="c.code" :label="c.name" :value="c.code" />
-            <el-option v-if="!categories.some((c) => c.code === 'notice')" label="通知公告" value="notice" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="标题" required>
-          <el-input v-model="form.title" maxlength="200" />
-        </el-form-item>
-        <el-form-item label="图片地址">
-          <div class="media-field">
-            <el-input v-model="form.image_url" maxlength="512" placeholder="https://...，用于小程序栏目列表和活动卡片展示" />
-            <el-upload :show-file-list="false" accept="image/*" :http-request="uploadArticleImage">
-              <el-button>上传图片</el-button>
-            </el-upload>
+    <el-drawer v-model="visible" size="520px" :with-header="false" destroy-on-close class="form-drawer">
+      <div class="drawer-shell">
+        <div class="drawer__head">
+          <div class="grow">
+            <h3>{{ editing ? "编辑内容" : "新增内容" }}</h3>
+            <p>保存后可在小程序对应栏目中查看</p>
           </div>
-        </el-form-item>
-        <el-form-item label="视频地址">
-          <div class="media-field">
-            <el-input v-model="form.video_url" maxlength="512" placeholder="宣传视频栏目可上传 mp4/mov/webm，供小程序端播放" />
-            <el-upload :show-file-list="false" accept="video/*" :http-request="uploadArticleVideo">
-              <el-button>上传视频</el-button>
-            </el-upload>
-          </div>
-        </el-form-item>
-        <el-form-item label="内容">
-          <el-input v-model="form.content" type="textarea" :rows="8" maxlength="20000" show-word-limit />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="form.sort_order" :min="0" :max="9999" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-switch v-model="form.is_active" active-text="启用" inactive-text="停用" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">保存</el-button>
-      </template>
-  </el-dialog>
+          <button class="iconbtn" aria-label="关闭" @click="visible = false">
+            <AppIcon name="x" :size="16" />
+          </button>
+        </div>
+        <div class="drawer__body">
+          <el-form :model="form" label-position="top">
+            <div class="fieldset">
+              <div class="fieldset__title">基本信息</div>
+              <div class="formgrid">
+                <div class="field">
+                  <label>所属栏目<span class="req">*</span></label>
+                  <el-select v-model="form.category" style="width: 100%">
+                    <el-option v-for="c in categories" :key="c.code" :label="c.name" :value="c.code" />
+                    <el-option v-if="!categories.some((c) => c.code === 'notice')" label="通知公告" value="notice" />
+                  </el-select>
+                </div>
+                <div class="field">
+                  <label>排序</label>
+                  <el-input-number
+                    v-model="form.sort_order"
+                    :min="0"
+                    :max="9999"
+                    controls-position="right"
+                    style="width: 100%"
+                  />
+                </div>
+                <div class="field span-2">
+                  <label>标题<span class="req">*</span></label>
+                  <el-input v-model="form.title" maxlength="200" placeholder="如：关于开展消防宣传月活动的通知" />
+                </div>
+                <div class="field span-2">
+                  <label>状态</label>
+                  <div class="status-line">
+                    <el-switch v-model="form.is_active" />
+                    <span class="hint" style="margin: 0">
+                      {{ form.is_active ? "启用后在小程序展示" : "停用后仅后台可见" }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
+            <div class="fieldset">
+              <div class="fieldset__title">封面与视频</div>
+              <div class="formgrid">
+                <div class="field span-2">
+                  <label>封面图片</label>
+                  <div class="media-field">
+                    <el-input v-model="form.image_url" maxlength="512" placeholder="https://…，用于栏目列表卡片" />
+                    <el-upload :show-file-list="false" accept="image/*" :http-request="uploadArticleImage">
+                      <button type="button" class="btn btn--ghost btn--sm">上传</button>
+                    </el-upload>
+                  </div>
+                  <div class="hint">留空则不展示封面图</div>
+                </div>
+                <div class="field span-2">
+                  <label>视频地址</label>
+                  <div class="media-field">
+                    <el-input v-model="form.video_url" maxlength="512" placeholder="宣传视频栏目可上传 mp4 / mov / webm" />
+                    <el-upload :show-file-list="false" accept="video/*" :http-request="uploadArticleVideo">
+                      <button type="button" class="btn btn--ghost btn--sm">上传</button>
+                    </el-upload>
+                  </div>
+                  <div class="hint">仅“宣传视频”类栏目需要</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="fieldset">
+              <div class="fieldset__title">正文</div>
+              <el-input
+                v-model="form.content"
+                type="textarea"
+                :rows="10"
+                maxlength="20000"
+                show-word-limit
+                placeholder="支持纯文本排版，换行会在小程序端保留"
+              />
+            </div>
+          </el-form>
+        </div>
+        <div class="drawer__foot">
+          <span class="hint" style="margin: 0">{{ editing ? "修改保存后立即生效" : "保存后可在小程序查看" }}</span>
+          <div class="grow"></div>
+          <button class="btn btn--ghost" @click="visible = false">取消</button>
+          <button class="btn btn--primary" :disabled="saving" @click="submit">
+            {{ saving ? "保存中…" : "保存" }}
+          </button>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -158,6 +323,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import http from "../api/http";
+import AppIcon from "../components/AppIcon.vue";
 
 const loading = ref(false);
 const saving = ref(false);
@@ -377,79 +543,101 @@ onMounted(load);
 </script>
 
 <style scoped>
-.page {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px 24px;
-}
-.head {
-  align-items: center;
+.drawer-shell {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  height: 100%;
 }
-.head-actions {
-  display: flex;
-  gap: 10px;
+:deep(.form-drawer .el-drawer__body) {
+  padding: 0;
+  overflow: hidden;
 }
-h2 {
-  margin: 0 0 6px;
-  font-size: 1.25rem;
+
+.card + .card {
+  margin-top: var(--s4);
 }
-p {
-  color: #777;
-  margin: 0;
-}
-.panel {
-  margin-top: 16px;
-}
-.panel-head {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-.category-add {
-  align-items: center;
-  display: flex;
-  gap: 8px;
-}
+
 .banner-editor {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 16px;
-  align-items: center;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: var(--s5);
+  align-items: start;
 }
-.banner-preview,
-.banner-empty {
-  width: 320px;
-  height: 150px;
-  border-radius: 8px;
+.banner-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 750 / 320;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   overflow: hidden;
-  background: #eef3fb;
+  background: var(--surface-3);
 }
 .banner-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #8a94a6;
-  border: 1px dashed #c7d2e4;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  aspect-ratio: 750 / 320;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  color: var(--ink-400);
+  font-size: var(--fs-12);
 }
-.banner-actions,
+
 .media-field {
   display: flex;
-  gap: 8px;
   align-items: center;
-  width: 100%;
+  gap: var(--s2);
 }
 .media-field .el-input {
   flex: 1;
+  min-width: 0;
 }
-h3 {
-  font-size: 1rem;
-  margin: 0;
+
+.cat-add {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  padding-bottom: 0;
+}
+.cat-add .input {
+  height: 32px;
+}
+
+.code {
+  font-family: var(--font-num);
+  font-size: var(--fs-12);
+  color: var(--ink-500);
+}
+.thumb {
+  display: block;
+  width: 56px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--surface-3);
 }
 .muted {
-  color: #999;
-  font-size: 12px;
+  font-size: var(--fs-12);
+  color: var(--ink-400);
+}
+.rowact {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+}
+
+@media (max-width: 980px) {
+  .banner-editor {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

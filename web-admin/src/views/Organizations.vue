@@ -1,95 +1,274 @@
 <template>
-  <div class="page">
-    <h2>单位录入</h2>
-    <el-form :inline="true" class="toolbar">
-      <el-form-item label="关键词">
-        <el-input v-model="keyword" placeholder="名称检索" clearable style="width: 200px" @keyup.enter="load(true)" @clear="load(true)" />
-      </el-form-item>
-      <el-form-item label="区县">
-        <el-select v-model="filterDistrict" clearable placeholder="全部" style="width: 140px">
-          <el-option v-for="d in districts" :key="d.id" :label="d.name" :value="d.id" />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="load(true)">查询</el-button>
-        <el-button @click="openDialog()">新增单位</el-button>
-        <el-button @click="downloadTemplate">下载导入模板</el-button>
+  <div>
+    <div class="page-head">
+      <div class="page-head__main">
+        <div class="eyebrow">基础档案</div>
+        <h1 class="page-title">单位台账</h1>
+        <p class="page-desc">维护全市消防培训责任单位，按区县与大队归类；支持模板批量导入与逐条修正</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn btn--ghost" @click="downloadTemplate">
+          <AppIcon name="download" :size="15" />下载模板
+        </button>
         <el-upload :show-file-list="false" accept=".xlsx" :http-request="uploadOrganizations">
-          <el-button type="success">批量导入</el-button>
+          <button class="btn btn--ghost"><AppIcon name="upload" :size="15" />批量导入</button>
         </el-upload>
-      </el-form-item>
-    </el-form>
-
-    <el-table :data="rows" border stripe v-loading="loading">
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="name" label="名称" min-width="180" />
-      <el-table-column label="类型" width="100">
-        <template #default="{ row }">
-          {{ orgTypeName(row.org_type) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="大队" width="120">
-        <template #default="{ row }">{{ brigadeName(row.brigade_id) }}</template>
-      </el-table-column>
-      <el-table-column label="区县" width="100">
-        <template #default="{ row }">{{ districtName(row.district_id) }}</template>
-      </el-table-column>
-      <el-table-column prop="contact_name" label="联系人" width="100" />
-      <el-table-column prop="contact_phone" label="联系电话" width="120" />
-      <el-table-column label="操作" width="140" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openDialog(row)">编辑</el-button>
-          <el-button v-if="currentAdmin?.role === 'detachment'" link type="danger" @click="remove(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="page"
-        v-model:page-size="pageSize"
-        :total="total"
-        :page-sizes="[20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @current-change="changePage"
-        @size-change="changePageSize"
-      />
+        <button class="btn btn--primary" @click="openDialog()">
+          <AppIcon name="plus" :size="15" />新增单位
+        </button>
+      </div>
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="editing?.id ? '编辑单位' : '新增单位'" width="520px" destroy-on-close>
-      <el-form :model="form" label-width="100px">
-        <el-form-item label="名称" required>
-          <el-input v-model="form.name" />
-        </el-form-item>
-        <el-form-item label="类型" required>
-          <el-select v-model="form.org_type" style="width: 100%">
-            <el-option v-for="t in orgTypes" :key="t.code" :label="t.name" :value="t.code" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="所属大队" required>
-          <el-select v-model="form.brigade_id" style="width: 100%">
-            <el-option v-for="b in brigades" :key="b.id" :label="b.name" :value="b.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="区县" required>
-          <el-select v-model="form.district_id" style="width: 100%">
-            <el-option v-for="d in districts" :key="d.id" :label="d.name" :value="d.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="联系人">
-          <el-input v-model="form.contact_name" />
-        </el-form-item>
-        <el-form-item label="联系电话">
-          <el-input v-model="form.contact_phone" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" rows="2" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
-      </template>
-    </el-dialog>
+    <div class="filterbar">
+      <div class="field" style="flex: 1; min-width: 240px">
+        <label for="f-org-kw">关键词</label>
+        <div class="search-inline">
+          <AppIcon name="search" :size="15" />
+          <input
+            id="f-org-kw"
+            v-model="keyword"
+            class="input"
+            placeholder="单位名称"
+            @keyup.enter="load(true)"
+          />
+        </div>
+      </div>
+      <div class="field" style="width: 200px">
+        <label for="f-org-district">区县</label>
+        <el-select
+          id="f-org-district"
+          v-model="filterDistrict"
+          clearable
+          placeholder="全部区县"
+          style="width: 100%"
+          @change="load(true)"
+        >
+          <el-option v-for="d in districts" :key="d.id" :label="d.name" :value="d.id" />
+        </el-select>
+      </div>
+      <div style="display: flex; gap: 8px; margin-left: auto">
+        <button class="btn btn--primary" @click="load(true)">查询</button>
+        <button class="btn btn--ghost" @click="resetFilters">重置</button>
+      </div>
+    </div>
+
+    <div v-if="keyword || filterDistrict" class="chips">
+      <span v-if="keyword" class="chip">
+        <b>关键词</b>{{ keyword }}
+        <button type="button" aria-label="移除关键词" @click="removeKeyword"><AppIcon name="x" :size="11" /></button>
+      </span>
+      <span v-if="filterDistrict" class="chip">
+        <b>区县</b>{{ districtName(filterDistrict) }}
+        <button type="button" aria-label="移除区县筛选" @click="removeDistrict"><AppIcon name="x" :size="11" /></button>
+      </span>
+      <button class="chips__reset" type="button" @click="resetFilters">清除全部</button>
+    </div>
+
+    <section class="card">
+      <div class="card__head">
+        <h3>单位清单</h3>
+        <span class="sub">共 {{ total }} 家</span>
+        <div class="grow"></div>
+        <span class="badge badge--ok">台账已登记</span>
+      </div>
+
+      <div v-loading="loading" class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th class="num" style="width: 64px">ID</th>
+              <th>单位名称</th>
+              <th style="width: 120px">单位类型</th>
+              <th style="width: 110px">区县</th>
+              <th style="width: 120px">所属大队</th>
+              <th style="width: 110px">联系人</th>
+              <th style="width: 130px">联系电话</th>
+              <th class="col-actions" style="width: 150px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="row.id">
+              <td class="num" style="color: var(--ink-400)">{{ row.id }}</td>
+              <td>
+                <button class="cell-main linkbtn" style="padding: 0" @click="openDetail(row)">{{ row.name }}</button>
+              </td>
+              <td>{{ orgTypeName(row.org_type) }}</td>
+              <td>{{ districtName(row.district_id) }}</td>
+              <td>{{ brigadeName(row.brigade_id) }}</td>
+              <td>{{ row.contact_name || "—" }}</td>
+              <td class="num">{{ row.contact_phone || "—" }}</td>
+              <td class="col-actions">
+                <div class="rowact" style="display: inline-flex; align-items: center; gap: 2px">
+                  <button class="linkbtn" @click="openDetail(row)">查看</button>
+                  <button class="linkbtn" @click="openDialog(row)">编辑</button>
+                  <el-dropdown
+                    v-if="currentAdmin?.role === 'detachment'"
+                    trigger="click"
+                    @command="(cmd) => onRowCommand(cmd, row)"
+                  >
+                    <button class="iconbtn" aria-label="更多操作"><AppIcon name="more" :size="16" /></button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="delete" class="is-danger">删除单位</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!rows.length && !loading">
+              <td colspan="8">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="building" :size="26" /></div>
+                  <h4>没有找到单位</h4>
+                  <p>{{ keyword || filterDistrict ? "换个关键词或区县试试，也可以清除筛选查看全部。" : "台账里还没有单位，先新增第一家，或用模板批量导入。" }}</p>
+                  <button v-if="keyword || filterDistrict" class="btn btn--ghost btn--sm" @click="resetFilters">清除筛选</button>
+                  <button v-else class="btn btn--primary btn--sm" @click="openDialog()">新增单位</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <span>共 {{ total }} 家 · 每页 {{ pageSize }} 条</span>
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[20, 50, 100]"
+          layout="sizes, prev, pager, next, jumper"
+          background
+          @current-change="changePage"
+          @size-change="changePageSize"
+        />
+      </div>
+    </section>
+
+    <!-- 查看单位 -->
+    <el-drawer v-model="detailVisible" size="520px" :with-header="false" destroy-on-close class="form-drawer">
+      <div class="drawer-shell">
+        <div class="drawer__head">
+          <div class="grow">
+            <h3>{{ detail?.name || "单位详情" }}</h3>
+            <p>单位 #{{ detail?.id }} · {{ orgTypeName(detail?.org_type) }}</p>
+          </div>
+          <button class="iconbtn" aria-label="关闭" @click="detailVisible = false">
+            <AppIcon name="x" :size="16" />
+          </button>
+        </div>
+        <div class="drawer__body">
+          <div class="fieldset">
+            <div class="fieldset__title">归属信息</div>
+            <div class="formgrid">
+              <div class="field">
+                <label>所属大队</label>
+                <b>{{ brigadeName(detail?.brigade_id) }}</b>
+              </div>
+              <div class="field">
+                <label>区县</label>
+                <b>{{ districtName(detail?.district_id) }}</b>
+              </div>
+            </div>
+          </div>
+          <div class="fieldset">
+            <div class="fieldset__title">联系信息</div>
+            <div class="formgrid">
+              <div class="field">
+                <label>联系人</label>
+                <b>{{ detail?.contact_name || "—" }}</b>
+              </div>
+              <div class="field">
+                <label>联系电话</label>
+                <b class="num">{{ detail?.contact_phone || "—" }}</b>
+              </div>
+              <div class="field span-2">
+                <label>备注</label>
+                <b>{{ detail?.remark || "—" }}</b>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="drawer__foot">
+          <div class="grow"></div>
+          <button class="btn btn--ghost" @click="detailVisible = false">关闭</button>
+          <button class="btn btn--primary" @click="editFromDetail">编辑</button>
+        </div>
+      </div>
+    </el-drawer>
+
+    <!-- 新增 / 编辑单位 -->
+    <el-drawer v-model="dialogVisible" size="520px" :with-header="false" destroy-on-close class="form-drawer">
+      <div class="drawer-shell">
+        <div class="drawer__head">
+          <div class="grow">
+            <h3>{{ editing?.id ? "编辑单位" : "新增单位" }}</h3>
+            <p>{{ editing?.id ? "修改后立即生效，已有培训与人员归属不受影响" : "登记后即可在培训与人员中选择该单位" }}</p>
+          </div>
+          <button class="iconbtn" aria-label="关闭" @click="dialogVisible = false">
+            <AppIcon name="x" :size="16" />
+          </button>
+        </div>
+        <div class="drawer__body">
+          <el-form :model="form" label-position="top">
+            <div class="fieldset">
+              <div class="fieldset__title">基本信息</div>
+              <div class="formgrid">
+                <div class="field span-2">
+                  <label>单位名称<span class="req">*</span></label>
+                  <el-input v-model="form.name" placeholder="填写单位全称，如：连山区某商业综合体" />
+                </div>
+                <div class="field">
+                  <label>单位类型<span class="req">*</span></label>
+                  <el-select v-model="form.org_type" style="width: 100%">
+                    <el-option v-for="t in orgTypes" :key="t.code" :label="t.name" :value="t.code" />
+                  </el-select>
+                </div>
+                <div class="field">
+                  <label>所属大队<span class="req">*</span></label>
+                  <el-select v-model="form.brigade_id" style="width: 100%">
+                    <el-option v-for="b in brigades" :key="b.id" :label="b.name" :value="b.id" />
+                  </el-select>
+                </div>
+                <div class="field span-2">
+                  <label>区县<span class="req">*</span></label>
+                  <el-select v-model="form.district_id" style="width: 100%">
+                    <el-option v-for="d in districts" :key="d.id" :label="d.name" :value="d.id" />
+                  </el-select>
+                </div>
+              </div>
+            </div>
+
+            <div class="fieldset">
+              <div class="fieldset__title">联系信息</div>
+              <div class="formgrid">
+                <div class="field">
+                  <label>联系人</label>
+                  <el-input v-model="form.contact_name" placeholder="选填" />
+                </div>
+                <div class="field">
+                  <label>联系电话</label>
+                  <el-input v-model="form.contact_phone" placeholder="选填" />
+                </div>
+                <div class="field span-2">
+                  <label>备注</label>
+                  <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="选填：单位地址、行业特征等" />
+                </div>
+              </div>
+            </div>
+          </el-form>
+        </div>
+        <div class="drawer__foot">
+          <span class="hint" style="margin: 0">带 * 为必填项</span>
+          <div class="grow"></div>
+          <button class="btn btn--ghost" @click="dialogVisible = false">取消</button>
+          <button class="btn btn--primary" :disabled="saving" @click="save">
+            {{ saving ? "保存中…" : "保存" }}
+          </button>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -97,6 +276,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import http from "../api/http";
+import AppIcon from "../components/AppIcon.vue";
 
 const loading = ref(false);
 const saving = ref(false);
@@ -112,6 +292,9 @@ const currentAdmin = ref(null);
 const page = ref(1);
 const pageSize = ref(20);
 const total = ref(0);
+
+const detailVisible = ref(false);
+const detail = ref(null);
 
 const form = reactive({
   name: "",
@@ -191,6 +374,22 @@ async function load(resetPage = false) {
   }
 }
 
+function resetFilters() {
+  keyword.value = "";
+  filterDistrict.value = undefined;
+  load(true);
+}
+
+function removeKeyword() {
+  keyword.value = "";
+  load(true);
+}
+
+function removeDistrict() {
+  filterDistrict.value = undefined;
+  load(true);
+}
+
 function changePageSize(size) {
   pageSize.value = size;
   load(true);
@@ -199,6 +398,20 @@ function changePageSize(size) {
 function changePage(nextPage) {
   page.value = nextPage;
   load();
+}
+
+function openDetail(row) {
+  detail.value = row;
+  detailVisible.value = true;
+}
+
+function editFromDetail() {
+  openDialog(detail.value);
+  detailVisible.value = false;
+}
+
+function onRowCommand(cmd, row) {
+  if (cmd === "delete") remove(row);
 }
 
 function openDialog(row) {
@@ -264,22 +477,16 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page {
-  background: #fff;
-  padding: 20px 24px;
-  border-radius: 8px;
-  min-height: 400px;
-}
-.toolbar {
-  margin-bottom: 12px;
-}
-h2 {
-  margin: 0 0 16px;
-  font-size: 1.25rem;
-}
-.pagination {
+.drawer-shell {
   display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
+  flex-direction: column;
+  height: 100%;
+}
+:deep(.form-drawer .el-drawer__body) {
+  padding: 0;
+  overflow: hidden;
+}
+:deep(.filterbar .el-select__wrapper) {
+  min-height: 36px;
 }
 </style>

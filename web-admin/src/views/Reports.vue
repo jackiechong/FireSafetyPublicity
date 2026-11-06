@@ -1,68 +1,293 @@
 <template>
-  <div class="page">
-    <div class="head">
-      <div>
-        <h2>综合查询</h2>
-        <p>按时间区间、人员类别、培训主题、单位名称查询统计，并支持 Excel 导入导出。</p>
+  <div>
+    <div class="page-head">
+      <div class="page-head__main">
+        <div class="eyebrow">数据查询</div>
+        <h1 class="page-title">综合查询</h1>
+        <p class="page-desc">按统计区间、培训主题、人员类别、开展大队与单位组合查询培训明细，并导出统计报表</p>
       </div>
-      <div class="actions">
-        <el-button @click="downloadTemplate">下载导入模板</el-button>
+      <div class="page-actions">
+        <button class="btn btn--ghost" @click="downloadTemplate">
+          <AppIcon name="download" :size="15" />下载模板
+        </button>
         <el-upload :show-file-list="false" accept=".xlsx" :http-request="uploadPersons">
-          <el-button type="primary">批量导入人员</el-button>
+          <button class="btn btn--ghost"><AppIcon name="upload" :size="15" />导入人员</button>
         </el-upload>
-        <el-button type="warning" @click="openScanTrainingImport">批量导入扫码培训</el-button>
-        <el-button type="success" @click="exportSummary">导出统计 Excel</el-button>
+        <button class="btn btn--ghost" @click="openScanTrainingImport">
+          <AppIcon name="qr" :size="15" />导入扫码培训
+        </button>
+        <button class="btn btn--primary" @click="exportSummary">
+          <AppIcon name="doc" :size="15" />导出统计
+        </button>
       </div>
     </div>
 
-    <section class="filters">
-      <el-date-picker v-model="range" type="datetimerange" start-placeholder="开始时间" end-placeholder="结束时间" value-format="YYYY-MM-DDTHH:mm:ss" />
-      <el-select v-model="topicId" clearable placeholder="培训主题" style="width: 180px">
-        <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
-      </el-select>
-      <el-select v-model="jobTitle" clearable filterable placeholder="人员类别/职务" style="width: 180px">
-        <el-option v-for="j in jobTitles" :key="j.id" :label="j.name" :value="j.name" />
-      </el-select>
-      <el-select v-model="brigadeId" clearable placeholder="开展大队" style="width: 180px">
-        <el-option v-for="brigade in brigades" :key="brigade.id" :label="brigade.name" :value="brigade.id" />
-      </el-select>
-      <el-select v-model="orgId" filterable remote clearable reserve-keyword placeholder="输入单位名称" :remote-method="remoteOrg" :loading="orgLoading" style="width: 260px">
-        <el-option v-for="o in orgOptions" :key="o.id" :label="`${o.name}（${o.district_name}）`" :value="o.id" />
-      </el-select>
-      <el-button type="primary" @click="loadAll(true)">查询</el-button>
-    </section>
+    <div class="filterbar">
+      <div class="field">
+        <label for="f-range">统计区间</label>
+        <el-date-picker
+          id="f-range"
+          v-model="range"
+          type="datetimerange"
+          start-placeholder="开始时间"
+          end-placeholder="结束时间"
+          value-format="YYYY-MM-DDTHH:mm:ss"
+          style="width: 340px"
+        />
+      </div>
+      <div class="field">
+        <label for="f-topic">培训主题</label>
+        <el-select id="f-topic" v-model="topicId" clearable placeholder="全部主题" style="width: 160px">
+          <el-option v-for="t in topics" :key="t.id" :label="t.name" :value="t.id" />
+        </el-select>
+      </div>
+      <div class="field">
+        <label for="f-job">人员类别</label>
+        <el-select id="f-job" v-model="jobTitle" clearable filterable placeholder="全部类别" style="width: 160px">
+          <el-option v-for="j in jobTitles" :key="j.id" :label="j.name" :value="j.name" />
+        </el-select>
+      </div>
+      <div class="field">
+        <label for="f-brigade">开展大队</label>
+        <el-select id="f-brigade" v-model="brigadeId" clearable placeholder="全部大队" style="width: 160px">
+          <el-option v-for="brigade in brigades" :key="brigade.id" :label="brigade.name" :value="brigade.id" />
+        </el-select>
+      </div>
+      <div class="field">
+        <label for="f-org">单位</label>
+        <el-select
+          id="f-org"
+          v-model="orgId"
+          filterable
+          remote
+          clearable
+          reserve-keyword
+          placeholder="输入单位名称"
+          :remote-method="remoteOrg"
+          :loading="orgLoading"
+          style="width: 220px"
+          @change="onOrgPicked"
+        >
+          <el-option v-for="o in orgOptions" :key="o.id" :label="`${o.name}（${o.district_name}）`" :value="o.id" />
+        </el-select>
+      </div>
+      <div style="display: flex; gap: 8px; margin-left: auto">
+        <button class="btn btn--primary" @click="loadAll(true)">查询</button>
+        <button class="btn btn--ghost" @click="resetFilters">重置</button>
+      </div>
+    </div>
 
-    <section class="panel">
-      <h3>培训清单</h3>
-      <el-table :data="summary" border stripe v-loading="loading">
-        <el-table-column label="培训名称" min-width="180">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="exportAttendance(row)">{{ row.title }}</el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="开展日期" width="170">
-          <template #default="{ row }">{{ fmt(row.start_at) }}</template>
-        </el-table-column>
-        <el-table-column prop="person_count" label="培训人数" width="100" />
-        <el-table-column prop="topic_name" label="培训主题" min-width="140" />
-        <el-table-column prop="brigade_name" label="开展大队" min-width="120" />
-        <el-table-column prop="organization_name" label="单位" min-width="180" />
-        <el-table-column v-if="canEditTraining" label="操作" width="100" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openTrainingEdit(row)">编辑</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="pagination">
+    <div v-if="filterChips.length" class="chips">
+      <span v-for="chip in filterChips" :key="chip.key" class="chip">
+        <b>{{ chip.label }}</b>{{ chip.value }}
+        <button type="button" :aria-label="`移除${chip.label}条件`" @click="clearChip(chip.key)">
+          <AppIcon name="x" :size="11" />
+        </button>
+      </span>
+      <button class="chips__reset" type="button" @click="resetFilters">清除全部</button>
+    </div>
+
+    <section class="card">
+      <div class="card__head">
+        <h3>培训清单</h3>
+        <span class="sub">共 {{ summaryTotal }} 场</span>
+        <div class="grow"></div>
+        <span v-if="filterChips.length" class="badge badge--live">已选 {{ filterChips.length }} 项条件</span>
+        <span v-else class="badge badge--done">全部数据</span>
+      </div>
+
+      <div v-loading="loading" class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th>培训名称</th>
+              <th style="width: 150px">开展日期</th>
+              <th class="num" style="width: 96px">培训人数</th>
+              <th style="width: 140px">培训主题</th>
+              <th style="width: 120px">开展大队</th>
+              <th style="width: 200px">单位</th>
+              <th v-if="canEditTraining" class="col-actions" style="width: 88px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in summary" :key="row.session_id">
+              <td>
+                <button class="cell-main linkbtn" style="padding: 0" @click="exportAttendance(row)">
+                  {{ row.title }}
+                </button>
+              </td>
+              <td class="num">{{ fmt(row.start_at) }}</td>
+              <td class="num">{{ row.person_count }}</td>
+              <td>{{ row.topic_name || "未分类" }}</td>
+              <td>{{ row.brigade_name || "—" }}</td>
+              <td>{{ row.organization_name || "—" }}</td>
+              <td v-if="canEditTraining" class="col-actions">
+                <button class="linkbtn" @click="openTrainingEdit(row)">编辑</button>
+              </td>
+            </tr>
+            <tr v-if="!summary.length && !loading">
+              <td :colspan="canEditTraining ? 7 : 6">
+                <div class="empty">
+                  <div class="empty__art"><AppIcon name="search" :size="26" /></div>
+                  <h4>没有符合条件的培训</h4>
+                  <p>{{ filterChips.length ? "换个条件组合试试，或清除筛选后重新查询。" : "当前统计区间内还没有培训记录。" }}</p>
+                  <button v-if="filterChips.length" class="btn btn--ghost btn--sm" @click="resetFilters">清除筛选</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <span>共 {{ summaryTotal }} 场 · 每页 {{ summaryPageSize }} 场</span>
         <el-pagination
           v-model:current-page="summaryPage"
           v-model:page-size="summaryPageSize"
           :total="summaryTotal"
           :page-sizes="[20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
+          layout="sizes, prev, pager, next, jumper"
+          background
           @current-change="changeSummaryPage"
           @size-change="changeSummaryPageSize"
         />
+      </div>
+    </section>
+
+    <div class="grid grid--2" style="margin-top: 20px">
+      <section class="card">
+        <div class="card__head">
+          <h3>按人员类别</h3>
+          <span class="sub">{{ jobTitle || "未选择类别" }}</span>
+          <div class="grow"></div>
+          <span class="badge badge--done">区县分布</span>
+        </div>
+
+        <template v-if="jobStats">
+          <div class="card__body" style="padding-bottom: 4px">
+            <div class="statline">
+              <b class="num">{{ jobStats.total_person_count }}</b>
+              <span>人 · 该类别累计培训人数</span>
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table class="tb">
+              <thead>
+                <tr>
+                  <th>区县</th>
+                  <th class="num" style="width: 120px">培训人数</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in jobStats.district_counts" :key="item.district_name">
+                  <td>{{ item.district_name }}</td>
+                  <td class="num">{{ item.person_count }}</td>
+                </tr>
+                <tr v-if="!jobStats.district_counts?.length">
+                  <td colspan="2">
+                    <div class="empty" style="padding: 32px 20px">
+                      <h4>暂无区县分布</h4>
+                      <p>该人员类别在当前条件下还没有签到记录。</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+
+        <div v-else class="empty">
+          <div class="empty__art"><AppIcon name="users" :size="26" /></div>
+          <h4>先选择人员类别</h4>
+          <p>在上方筛选栏选择人员类别后，这里会按区县汇总培训人数。</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__head">
+          <h3>按培训主题</h3>
+          <span class="sub">{{ topicStats.length }} 个主题</span>
+          <div class="grow"></div>
+          <span class="badge badge--done">培训人数</span>
+        </div>
+        <div class="tablewrap">
+          <table class="tb">
+            <thead>
+              <tr>
+                <th>主题</th>
+                <th class="num" style="width: 96px">培训人数</th>
+                <th style="width: 240px">开展大队</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in topicStats" :key="row.topic_name">
+                <td class="cell-main">{{ row.topic_name || "未分类" }}</td>
+                <td class="num">{{ row.person_count }}</td>
+                <td class="cell-wrap" :title="(row.brigades || []).join('、')">
+                  {{ (row.brigades || []).join("、") || "—" }}
+                </td>
+              </tr>
+              <tr v-if="!topicStats.length">
+                <td colspan="3">
+                  <div class="empty" style="padding: 32px 20px">
+                    <h4>暂无主题统计</h4>
+                    <p>当前条件下还没有可汇总的培训记录。</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top: 20px">
+      <div class="card__head">
+        <h3>单位完成情况</h3>
+        <span class="sub">{{ selectedOrgName || "未选择单位" }}</span>
+        <div class="grow"></div>
+        <span class="badge badge--done">按人员类别</span>
+      </div>
+
+      <div v-if="!orgId" class="empty">
+        <div class="empty__art"><AppIcon name="building" :size="26" /></div>
+        <h4>先选择单位</h4>
+        <p>在筛选栏选择单位后，这里按人员类别对比登记人数与已培训人数。</p>
+      </div>
+
+      <div v-else class="tablewrap">
+        <table class="tb">
+          <thead>
+            <tr>
+              <th>人员类别</th>
+              <th class="num" style="width: 140px">本单位登记人数</th>
+              <th class="num" style="width: 120px">已培训人数</th>
+              <th style="width: 220px">完成进度</th>
+              <th class="num" style="width: 90px">完成率</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in completion" :key="row.job_title">
+              <td class="cell-main">{{ row.job_title || "未填写类别" }}</td>
+              <td class="num">{{ row.registered_count }}</td>
+              <td class="num">{{ row.trained_count }}</td>
+              <td>
+                <div class="pbar" :aria-label="`完成率 ${row.completion_percent}%`">
+                  <span :style="{ width: Math.min(100, Number(row.completion_percent) || 0) + '%' }"></span>
+                </div>
+              </td>
+              <td class="num">{{ row.completion_percent }}%</td>
+            </tr>
+            <tr v-if="!completion.length">
+              <td colspan="5">
+                <div class="empty" style="padding: 32px 20px">
+                  <h4>暂无完成情况</h4>
+                  <p>该单位在当前条件下还没有登记人员或培训记录。</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
@@ -114,62 +339,29 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="trainingEditVisible = false">取消</el-button>
-        <el-button type="primary" :loading="trainingEditSaving" @click="saveTrainingEdit">保存</el-button>
+        <button class="btn btn--ghost" @click="trainingEditVisible = false">取消</button>
+        <button class="btn btn--primary" :disabled="trainingEditSaving" @click="saveTrainingEdit">
+          {{ trainingEditSaving ? "保存中…" : "保存" }}
+        </button>
       </template>
     </el-dialog>
 
     <el-dialog v-model="scanTrainingImportVisible" title="批量导入扫码培训" width="560px" destroy-on-close>
       <el-upload v-model:file-list="scanTrainingFiles" accept=".xlsx" multiple :auto-upload="false">
-        <el-button type="warning">选择 Excel 文件</el-button>
+        <button class="btn btn--ghost">选择 Excel 文件</button>
       </el-upload>
+      <p class="hint" style="margin-top: 10px">支持一次选择多个扫码导出文件，导入后自动归并为培训场次与签到记录。</p>
       <template #footer>
-        <el-button @click="scanTrainingImportVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!scanTrainingFiles.length" :loading="scanTrainingImporting" @click="submitScanTrainingImport">
-          开始导入
-        </el-button>
+        <button class="btn btn--ghost" @click="scanTrainingImportVisible = false">取消</button>
+        <button
+          class="btn btn--primary"
+          :disabled="!scanTrainingFiles.length || scanTrainingImporting"
+          @click="submitScanTrainingImport"
+        >
+          {{ scanTrainingImporting ? "导入中…" : "开始导入" }}
+        </button>
       </template>
     </el-dialog>
-
-    <section class="grid">
-      <div class="panel">
-        <h3>按人员类别</h3>
-        <el-empty v-if="!jobStats" description="请选择人员类别后查询" />
-        <div v-else>
-          <div class="metric">{{ jobStats.total_person_count }} 人</div>
-          <el-table :data="jobStats.district_counts" border size="small">
-            <el-table-column prop="district_name" label="区县" />
-            <el-table-column prop="person_count" label="培训人数" width="100" />
-          </el-table>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h3>按培训主题</h3>
-        <el-table :data="topicStats" border size="small">
-          <el-table-column prop="topic_name" label="主题" />
-          <el-table-column prop="person_count" label="培训人数" width="100" />
-          <el-table-column label="开展大队">
-            <template #default="{ row }">{{ (row.brigades || []).join("、") || "—" }}</template>
-          </el-table-column>
-        </el-table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h3>单位完成情况</h3>
-      <el-empty v-if="!orgId" description="请选择单位后查询" />
-      <el-table v-else :data="completion" border stripe>
-        <el-table-column prop="job_title" label="人员类别" />
-        <el-table-column prop="registered_count" label="本单位登记人数" width="140" />
-        <el-table-column prop="trained_count" label="已培训人数" width="120" />
-        <el-table-column label="完成百分比" width="180">
-          <template #default="{ row }">
-            <el-progress :percentage="row.completion_percent" />
-          </template>
-        </el-table-column>
-      </el-table>
-    </section>
   </div>
 </template>
 
@@ -177,6 +369,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import http from "../api/http";
+import AppIcon from "../components/AppIcon.vue";
 
 const loading = ref(false);
 const range = ref([]);
@@ -218,6 +411,63 @@ const canEditTraining = computed(() => currentAdmin.value?.role === "detachment"
 const editTopicOptions = computed(() =>
   topics.value.filter((t) => t.is_active !== false || t.id === editingTraining.value?.topic_id)
 );
+
+/* ---- 展示辅助：已选条件回显 / 单个条件清除 ---- */
+const selectedOrgName = ref("");
+const filterChips = computed(() => {
+  const chips = [];
+  if (range.value?.[0]) {
+    const end = range.value?.[1] ? ` 至 ${fmt(range.value[1])}` : " 起";
+    chips.push({ key: "range", label: "区间", value: `${fmt(range.value[0])}${end}` });
+  }
+  if (topicId.value) {
+    chips.push({ key: "topic", label: "主题", value: topics.value.find((t) => t.id === topicId.value)?.name || "已选" });
+  }
+  if (jobTitle.value) {
+    chips.push({ key: "job", label: "类别", value: jobTitle.value });
+  }
+  if (brigadeId.value) {
+    chips.push({
+      key: "brigade",
+      label: "大队",
+      value: brigades.value.find((b) => Number(b.id) === Number(brigadeId.value))?.name || "已选",
+    });
+  }
+  if (orgId.value) {
+    chips.push({ key: "org", label: "单位", value: selectedOrgName.value || "已选" });
+  }
+  return chips;
+});
+
+function onOrgPicked(id) {
+  if (!id) {
+    selectedOrgName.value = "";
+    return;
+  }
+  selectedOrgName.value = orgOptions.value.find((o) => Number(o.id) === Number(id))?.name || selectedOrgName.value;
+}
+
+function clearChip(key) {
+  if (key === "range") range.value = [];
+  else if (key === "topic") topicId.value = undefined;
+  else if (key === "job") jobTitle.value = "";
+  else if (key === "brigade") brigadeId.value = undefined;
+  else if (key === "org") {
+    orgId.value = undefined;
+    selectedOrgName.value = "";
+  }
+  loadAll(true);
+}
+
+function resetFilters() {
+  range.value = [];
+  topicId.value = undefined;
+  jobTitle.value = "";
+  brigadeId.value = undefined;
+  orgId.value = undefined;
+  selectedOrgName.value = "";
+  loadAll(true);
+}
 
 function params(extra = {}) {
   const p = { ...extra };
@@ -426,54 +676,36 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px 24px;
-}
-.head,
-.actions,
-.filters {
-  align-items: center;
+.statline {
   display: flex;
-  gap: 12px;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ink-500);
+  font-size: var(--fs-12);
 }
-.head {
-  justify-content: space-between;
+.statline b {
+  font-size: var(--fs-26);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
 }
-h2 {
-  margin: 0 0 6px;
-  font-size: 1.25rem;
+.pbar {
+  height: 5px;
+  min-width: 120px;
+  background: var(--surface-3);
+  border-radius: 3px;
+  overflow: hidden;
 }
-p {
-  color: #777;
-  margin: 0;
+.pbar span {
+  display: block;
+  height: 100%;
+  background: var(--brand-500);
+  border-radius: 3px;
+  transition: width var(--t-base);
 }
-.filters {
-  flex-wrap: wrap;
-  margin: 18px 0;
-}
-.panel {
-  margin-top: 18px;
-}
-.grid {
-  display: grid;
-  gap: 18px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-h3 {
-  font-size: 1rem;
-  margin: 0 0 10px;
-}
-.pagination {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-.metric {
-  color: #1a237e;
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 10px;
+.cell-wrap {
+  font-size: var(--fs-12);
+  line-height: 1.55;
+  color: var(--ink-500);
 }
 </style>

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import Login from "../views/Login.vue";
 import Layout from "../views/Layout.vue";
 import { prefersMobileDashboard } from "../utils/device";
+import { getToken } from "../utils/auth";
 
 const routes = [
   { path: "/login", name: "login", component: Login, meta: { public: true } },
@@ -116,7 +117,7 @@ const router = createRouter({
 });
 
 router.beforeEach((to, _from, next) => {
-  const token = localStorage.getItem("admin_token");
+  const token = getToken();
   const isPublic = to.matched.some((r) => r.meta.public);
   if (!isPublic && !token) {
     next({ name: "login", query: { redirect: to.fullPath } });

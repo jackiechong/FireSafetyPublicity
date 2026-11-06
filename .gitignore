@@ -29,5 +29,8 @@ backend/data/*.db-*
 *.swp
 .DS_Store
 
+# 本地临时目录（截图、构建缓存等）
+.tmp/
+
 # 微信小程序（开发者本机私有配置，按需保留；含敏感信息时请取消下面一行注释）
 # miniprogram/project.private.config.json
